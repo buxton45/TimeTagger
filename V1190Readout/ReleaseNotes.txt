@@ -1,0 +1,38 @@
+
+  -----------------------------------------------------------------------------
+
+                   --- CAEN SpA - Computing Division ---
+
+  -----------------------------------------------------------------------------
+
+  V1190Readout Release Notes
+
+  -----------------------------------------------------------------------------
+  
+  Rel. 1.1   - June 2019 - First official Release
+
+  -----------------------------------------------------------------------------
+
+
+  Description
+  -----------
+
+  This file describes the revision history of V1190Readout, a sample program for
+  the CAEN V1190/V1290 boards.
+  See the README text file for more informations.
+
+  
+  System Requirements
+  -------------------
+  - Linux 32/64-bit
+  - CAENVMELib library
+  - V1190 | V1290 Digital TDC
+
+  
+  How to get support
+  -----------------
+
+  CAEN makes available the technical support of its specialists for requests
+  concerning CAEN products. Use the support form available at the following link:
+  https://www.caen.it/support-services/support-form
+

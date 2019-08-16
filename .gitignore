@@ -1,0 +1,18 @@
+##Files to be ignored by Git
+
+##Subdirectories can have their own .gitignore files!
+
+CAENUSBdrvB-1.5.2*
+CAENVMELib-2.50*
+
+*Data*
+*Mike*
+*TMP*
+
+*~
+*.o
+*.so
+*.d
+*.pcm
+
+
