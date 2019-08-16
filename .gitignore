@@ -14,5 +14,5 @@ CAENVMELib-2.50*
 *.so
 *.d
 *.pcm
-
+*rootdict.cxx
 

@@ -86,6 +86,7 @@
 #include "TTree.h"
 #include <assert.h>
 #include <vector>
+#include <ctime>
 using std::vector;
 
 
@@ -227,7 +228,7 @@ void PlotHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChToPl
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, unsigned int aCh1=1, unsigned int aCh2=8)
+void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, unsigned int aCh1=1, unsigned int aCh2=8)
 {
   vector<float> tData1(0);
   vector<float> tData2(0);
@@ -256,8 +257,8 @@ void ExtractEventsAndLoadTree(int aGulp, int aNb, unsigned int *aBuff, TimeTagge
     }    
     else if(IS_TDC_DATA(aBuff[i]))
     {
-      if     (DATA_CH_25(aBuff[i])==aCh1) tData1.push_back(DATA_MEAS_25(aBuff[i]));
-      else if(DATA_CH_25(aBuff[i])==aCh2) tData2.push_back(DATA_MEAS_25(aBuff[i]));
+      if     (DATA_CH_25(aBuff[i])==aCh1) tData1.push_back(aRes*DATA_MEAS_25(aBuff[i]));
+      else if(DATA_CH_25(aBuff[i])==aCh2) tData2.push_back(aRes*DATA_MEAS_25(aBuff[i]));
       else assert(0);
     }
     else if(IS_TDC_ERROR(aBuff[i])) aTTE->SetContainsError(true);
@@ -292,10 +293,15 @@ int main(int argc, char *argv[])
 	int tNGulps=0;
 	int tNErrs=0;
 	TimeTaggerEvent* tTTE = new TimeTaggerEvent();
-	TFile* tTreeFile = new TFile("tTreeFile.root", "RECREATE");
+
 	TTree* tTTETree = new TTree("tTTETree", "tTTETree");
 	tTTETree->Branch("TimeBranch", &tTTE);
 	
+	char tSaveDirBase[1000];
+  TFile* tTreeFile;
+	
+	unsigned int EnSubTrg, SetRes;
+	double tRes;
 	//----------------------
 
     //int Tref;
@@ -430,14 +436,37 @@ int main(int argc, char *argv[])
                 }
                     
             }
+            
+            // Trigger subtraction
+            if (strstr(str, "EN_SUB_TRG")!=NULL)
+                fscanf(f_ini, "%d", &EnSubTrg);
+                
+            // Resolution setting
+            if (strstr(str, "SET_RES")!=NULL)
+                fscanf(f_ini, "%d", &SetRes);                
+             
+            // Save directory base
+            if (strstr(str, "DATA_SAVE_BASE")!=NULL)
+                fscanf(f_ini, "%s", tSaveDirBase);                               
         }
     }
     fclose (f_ini);
 
 	if (RawData == 1){
 		fr = fopen("Raw_Data.txt", "w");
+		
+		time_t now = std::time(0);
+		tm *ltm = std::localtime(&now);
+		TString tTreeFileName = TString::Format("%s_%02d%02d%02d_%02d%02d.root",
+		                                         tSaveDirBase, 
+		                                         ltm->tm_year, ltm->tm_mon, ltm->tm_mday,
+		                                         ltm->tm_hour, ltm->tm_min);
+		tTreeFile = new TFile(tTreeFileName, "RECREATE");	
+		
+		
 	}
-	
+
+
     // ************************************************************************
     // Initialize the board and the variables for the acquisition
     // ************************************************************************
@@ -488,29 +517,37 @@ int main(int argc, char *argv[])
 	else
 		V1190WriteOpcode(3, opcd);  // Enable Channels
 
-//    V1190WriteRegister(SW_CLEAR, 0);
+
+  //--------Set resolution
+  opcd[0]=0x2400;
+  opcd[1]=SetRes;
+  V1190WriteOpcode(2, opcd);
+
+  //--------Read resolution to be sure
+  opcd[0]=0x2600;
+  V1190WriteOpcode(1, opcd);
+  unsigned int tReturn;
+  tReturn = V1190ReadRegister(OPCODE);
+  assert(tReturn==SetRes);
+  printf("SetRes = %8x\n", tReturn);
+  if     (SetRes==0) tRes = 800e-12;
+  else if(SetRes==1) tRes = 200e-12;
+  else if(SetRes==2) tRes = 100e-12;
+  else if(SetRes==3) tRes =  25e-12;   
+  else assert(0); 
+  printf("tRes = %e s\n", tRes);
+  //-------Set subtraction mode
+  if(EnSubTrg)
+  {
+    opcd[0]=0x1400;
+    V1190WriteOpcode(1, opcd);
+  }
+
+  //--------------------------------------------------------------------------------
     
     printf("Board Ready. Press a key to start the acquisition ('q' to quit)\n");
     if (getch()=='q')
         goto exit_prog;
-/*
-//THIS CHANGES THE RESOLUTION
-//PROBABLY KEEP AT 25 PS FOR NOW
- opcd[0]=0x2400;
- opcd[1]=1;
-    V1190WriteOpcode(2, opcd);
-
-//THIS READS THE RESOLUTION
-//TODO ADD THIS IN CALCULATION OF TIME!!!!!!!!!!
- opcd[0]=0x2600;
-    V1190WriteOpcode(1, opcd);
- int tReturn;
- tReturn = V1190ReadRegister(OPCODE);
- printf("tReturn = %8x", tReturn);
-*/
-//-------Set subtraction mode
-  opcd[0]=0x1400;
-  V1190WriteOpcode(1, opcd);
         
     V1190WriteRegister(SW_CLEAR, 0);        
 
@@ -587,7 +624,7 @@ int main(int argc, char *argv[])
 //		int r;
                 tNGulps++;
 		if (RawData == 1){
-                        ExtractEventsAndLoadTree(tNGulps, nb, buff, tTTE, tTTETree, 1, 8);
+                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, 1, 8);
 			for(r=0; r<nb/4; r++)
 			{
 				fprintf(fr, "%8x\n", buff[r]);
