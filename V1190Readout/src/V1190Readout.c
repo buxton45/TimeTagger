@@ -84,6 +84,9 @@
 #include "AddOn/TimeTaggerEvent.h"
 #include "TFile.h"
 #include "TTree.h"
+#include "TH1D.h"
+#include "TObjArray.h"
+#include "TCanvas.h"
 #include <assert.h>
 #include <vector>
 #include <ctime>
@@ -228,18 +231,45 @@ void PlotHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChToPl
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, unsigned int aCh1=1, unsigned int aCh2=8)
+void FillAutoCF(TH1D* aAutoCF, vector<float> &aData)
+{
+  for(unsigned int i=0; i<aData.size(); i++)
+  {
+    for(unsigned int j=i+1; j<aData.size(); j++)
+    {
+      aAutoCF->Fill(aData[j]-aData[i]);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+void FillCF(TH1D* aCF, vector<float> &aData1, vector<float> &aData2)
+{
+  for(unsigned int i1=0; i1<aData1.size(); i1++)
+  {
+    for(unsigned int i2=0; i2<aData2.size(); i2++)
+    {
+      aCF->Fill(aData2[i2]-aData1[i1]);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, unsigned int aCh1=1, unsigned int aCh2=8)
 {
   vector<float> tData1(0);
   vector<float> tData2(0);
   tData1.reserve(aNb);
   tData2.reserve(aNb);  
+  int tEventNumber = -1;
   for(int i=0; i<aNb/4; i++)
   {
     if(IS_GLOBAL_HEADER(aBuff[i]))
     {
       assert(tData1.size()==0);
       assert(tData2.size()==0);     
+      
+      tEventNumber = DATA_EVENT_COUNTER(aBuff[i]);
       aTTE->SetEventNumber(DATA_EVENT_COUNTER(aBuff[i])); 
       aTTE->SetGulpNumber(aGulp);
     }
@@ -250,6 +280,22 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
       aTTE->SetTimeList(0, tData1.size(), tData1.data());
       aTTE->SetTimeList(1, tData2.size(), tData2.data());
       if(!aTTE->ContainsError()) aTTETree->Fill();
+      
+      //Fill real-time histograms
+      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData1);
+      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData2);
+      FillCF((TH1D*)aRealTimeCFs->At(2), tData1, tData2);    
+      
+      //Draw real-time histograms if tEventNumber%1000==0 
+      if(tEventNumber%1000==0 && tEventNumber>0)
+      {
+        for(int i=0; i<aRealTimeCanvases->GetEntries(); i++)
+        {
+          ((TCanvas*)aRealTimeCanvases->At(i))->cd();
+          ((TH1D*)aRealTimeCFs->At(i))->DrawCopy();
+          ((TCanvas*)aRealTimeCanvases->At(i))->Update();
+        }              
+      }
       
       tData1.clear();
       tData2.clear();
@@ -302,6 +348,9 @@ int main(int argc, char *argv[])
 	
 	unsigned int EnSubTrg, SetRes;
 	double tRes;
+	
+  TObjArray* tRealTimeCFs = new TObjArray();
+  TObjArray* tRealTimeCanvases = new TObjArray();
 	//----------------------
 
     //int Tref;
@@ -542,7 +591,20 @@ int main(int argc, char *argv[])
     opcd[0]=0x1400;
     V1190WriteOpcode(1, opcd);
   }
+  
+  //-------Initialize histograms for real-time monitoring
+  tRealTimeCFs->Add(new TH1D("tAutoCF1", "tAutoCF1", 2000, -2500000*tRes, 2500000*tRes));
+  tRealTimeCFs->Add(new TH1D("tAutoCF2", "tAutoCF2", 2000, -2500000*tRes, 2500000*tRes));
+  tRealTimeCFs->Add(new TH1D("tCF","tCF", 2000, -2500000*tRes, 2500000*tRes));    
 
+  tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF1", "tCan_AutoCF1"));
+  tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF2", "tCan_AutoCF2"));
+  tRealTimeCanvases->Add(new TCanvas("tCan_CF", "tCan_CF"));  
+  
+  for(int i=0; i<tRealTimeCanvases->GetEntries(); i++)
+  {  
+    ((TCanvas*)tRealTimeCanvases->At(i))->Draw();
+  }
   //--------------------------------------------------------------------------------
     
     printf("Board Ready. Press a key to start the acquisition ('q' to quit)\n");
@@ -624,7 +686,7 @@ int main(int argc, char *argv[])
 //		int r;
                 tNGulps++;
 		if (RawData == 1){
-                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, 1, 8);
+                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, tRealTimeCFs, tRealTimeCanvases, 1, 8);
 			for(r=0; r<nb/4; r++)
 			{
 				fprintf(fr, "%8x\n", buff[r]);
