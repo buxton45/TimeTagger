@@ -11,7 +11,7 @@ BASE_ADDRESS   EE000000
 # ----------------------------------------------------------------
 # Data save directory base
 # ----------------------------------------------------------------
-DATA_SAVE_BASE  /home/jesse/Analysis/TimeTagger/Data
+DATA_SAVE_BASE  /home/jesse/Analysis/TimeTagger/Data/
 
 
 # ----------------------------------------------------------------

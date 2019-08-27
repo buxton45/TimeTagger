@@ -87,10 +87,16 @@
 #include "TH1D.h"
 #include "TObjArray.h"
 #include "TCanvas.h"
+#include "TApplication.h"
 #include <assert.h>
 #include <vector>
 #include <ctime>
+#include <iostream>
 using std::vector;
+using std::cout;
+using std::endl;
+
+
 
 
 //***************************************************************************
@@ -231,10 +237,11 @@ void PlotHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChToPl
 }
 
 // ---------------------------------------------------------------------------
-void FillAutoCF(TH1D* aAutoCF, vector<float> &aData)
+void FillAutoCF(TH1D* aAutoCF, vector<float> &aData, TH1D* aTimes)
 {
   for(unsigned int i=0; i<aData.size(); i++)
   {
+    aTimes->Fill(aData[i]);
     for(unsigned int j=i+1; j<aData.size(); j++)
     {
       aAutoCF->Fill(aData[j]-aData[i]);
@@ -255,7 +262,7 @@ void FillCF(TH1D* aCF, vector<float> &aData1, vector<float> &aData2)
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, unsigned int aCh1=1, unsigned int aCh2=8)
+void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, TH1D* aTimes1, TH1D* aTimes2, TCanvas* aGCan, TH1D* aPhaseSpace, unsigned int aCh1=1, unsigned int aCh2=8)
 {
   vector<float> tData1(0);
   vector<float> tData2(0);
@@ -282,8 +289,8 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
       if(!aTTE->ContainsError()) aTTETree->Fill();
       
       //Fill real-time histograms
-      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData1);
-      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData2);
+      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData1, aTimes1);
+      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData2, aTimes2);
       FillCF((TH1D*)aRealTimeCFs->At(2), tData1, tData2);    
       
       //Draw real-time histograms if tEventNumber%1000==0 
@@ -291,10 +298,22 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
       {
         for(int i=0; i<aRealTimeCanvases->GetEntries(); i++)
         {
-          ((TCanvas*)aRealTimeCanvases->At(i))->cd();
-          ((TH1D*)aRealTimeCFs->At(i))->DrawCopy();
+          TH1D* tNorm = (TH1D*)((TH1D*)aRealTimeCFs->At(i))->Clone(TString::Format("tNorm_%d", i));
+          tNorm->Divide(aPhaseSpace);
+
+          ((TCanvas*)aRealTimeCanvases->At(i))->cd(1);
+          tNorm->DrawCopy();
+          tNorm->GetXaxis()->SetRangeUser(-0.000005, 0.000005);
+          ((TCanvas*)aRealTimeCanvases->At(i))->cd(2);
+          tNorm->DrawCopy();
           ((TCanvas*)aRealTimeCanvases->At(i))->Update();
-        }              
+          tNorm->Delete();
+        }     
+        aGCan->cd(1);
+        aTimes1->DrawCopy();
+        aGCan->cd(2);
+        aTimes2->DrawCopy();     
+        aGCan->Update();    
       }
       
       tData1.clear();
@@ -319,6 +338,8 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
 // ###########################################################################
 int main(int argc, char *argv[])
 {
+    TApplication theApp("App", &argc, argv);
+
     unsigned short fwrev, ctrl, ErrorFlags=0, opcd[10];
 	int sn, BoardType;
     int TDCerrors=0, Ovf=0, TrgLost=0;
@@ -351,6 +372,13 @@ int main(int argc, char *argv[])
 	
   TObjArray* tRealTimeCFs = new TObjArray();
   TObjArray* tRealTimeCanvases = new TObjArray();
+
+  TH1D* tTimes1 = new TH1D("tTimes1", "tTimes1", 2000, 0., 0.000055);
+  TH1D* tTimes2 = new TH1D("tTimes2", "tTimes2", 2000, 0., 0.000055);
+  TCanvas* tGCan = new TCanvas("tGCan", "tGCan");
+  tGCan->Divide(2,1);
+
+  TH1D* tPhaseSpace;
 	//----------------------
 
     //int Tref;
@@ -506,7 +534,7 @@ int main(int argc, char *argv[])
 		
 		time_t now = std::time(0);
 		tm *ltm = std::localtime(&now);
-		TString tTreeFileName = TString::Format("%s_%02d%02d%02d_%02d%02d.root",
+		TString tTreeFileName = TString::Format("%stTreeFile_%02d%02d%02d_%02d%02d.root",
 		                                         tSaveDirBase, 
 		                                         ltm->tm_year, ltm->tm_mon, ltm->tm_mday,
 		                                         ltm->tm_hour, ltm->tm_min);
@@ -600,9 +628,20 @@ int main(int argc, char *argv[])
   tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF1", "tCan_AutoCF1"));
   tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF2", "tCan_AutoCF2"));
   tRealTimeCanvases->Add(new TCanvas("tCan_CF", "tCan_CF"));  
+
+  tPhaseSpace = (TH1D*)((TH1D*)tRealTimeCFs->At(0))->Clone("tPhaseSpace");
+  for(int i=1; i<tPhaseSpace->GetNbinsX()+1; i++)
+  {
+    if(fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)) > tRes*pow(2., 21)) tPhaseSpace->SetBinContent(i, 0.);
+    else
+    {
+      tPhaseSpace->SetBinContent(i, 1.0-fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)/(tRes*pow(2., 21))));
+    }
+  }
   
   for(int i=0; i<tRealTimeCanvases->GetEntries(); i++)
   {  
+    ((TCanvas*)tRealTimeCanvases->At(i))->Divide(2,1);
     ((TCanvas*)tRealTimeCanvases->At(i))->Draw();
   }
   //--------------------------------------------------------------------------------
@@ -686,7 +725,7 @@ int main(int argc, char *argv[])
 //		int r;
                 tNGulps++;
 		if (RawData == 1){
-                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, tRealTimeCFs, tRealTimeCanvases, 1, 8);
+                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, tRealTimeCFs, tRealTimeCanvases, tTimes1, tTimes2, tGCan, tPhaseSpace, 1, 8);
 			for(r=0; r<nb/4; r++)
 			{
 				fprintf(fr, "%8x\n", buff[r]);
