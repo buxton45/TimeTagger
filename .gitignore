@@ -15,4 +15,4 @@ CAENVMELib-2.50*
 *.d
 *.pcm
 *rootdict.cxx
-
+*.txt
