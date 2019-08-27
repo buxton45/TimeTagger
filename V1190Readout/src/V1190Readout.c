@@ -359,13 +359,13 @@ int main(int argc, char *argv[])
 	//----------------------
 	int tNGulps=0;
 	int tNErrs=0;
-	TimeTaggerEvent* tTTE = new TimeTaggerEvent();
 
-	TTree* tTTETree = new TTree("tTTETree", "tTTETree");
-	tTTETree->Branch("TimeBranch", &tTTE);
 	
 	char tSaveDirBase[1000];
   TFile* tTreeFile;
+  TTree* tTTETree;
+  TimeTaggerEvent* tTTE;
+  
 	
 	unsigned int EnSubTrg, SetRes;
 	double tRes;
@@ -534,11 +534,16 @@ int main(int argc, char *argv[])
 		
 		time_t now = std::time(0);
 		tm *ltm = std::localtime(&now);
-		TString tTreeFileName = TString::Format("%stTreeFile_%02d%02d%02d_%02d%02d.root",
+		TString tTreeFileName = TString::Format("%stTreeFile_%04d%02d%02d_%02d%02d.root",
 		                                         tSaveDirBase, 
-		                                         ltm->tm_year, ltm->tm_mon, ltm->tm_mday,
+		                                         ltm->tm_year+1900, ltm->tm_mon+1, ltm->tm_mday,
 		                                         ltm->tm_hour, ltm->tm_min);
 		tTreeFile = new TFile(tTreeFileName, "RECREATE");	
+
+	  tTTE = new TimeTaggerEvent();
+
+	  tTTETree = new TTree("tTTETree", "tTTETree");
+	  tTTETree->Branch("TimeBranch", &tTTE);
 		
 		
 	}
