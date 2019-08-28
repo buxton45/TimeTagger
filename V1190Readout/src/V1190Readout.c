@@ -92,6 +92,7 @@
 #include <vector>
 #include <ctime>
 #include <iostream>
+#include <string>
 using std::vector;
 using std::cout;
 using std::endl;
@@ -364,6 +365,7 @@ int main(int argc, char *argv[])
 	char tSaveDirBase[1000];
   TFile* tTreeFile;
   TTree* tTTETree;
+  TTree* tInfoTree;
   TimeTaggerEvent* tTTE;
   
 	
@@ -529,6 +531,7 @@ int main(int argc, char *argv[])
     }
     fclose (f_ini);
 
+
 	if (RawData == 1){
 		fr = fopen("Raw_Data.txt", "w");
 		
@@ -624,6 +627,39 @@ int main(int argc, char *argv[])
     opcd[0]=0x1400;
     V1190WriteOpcode(1, opcd);
   }
+  
+  //----- make tInfoTree -------------------------------------------------
+  if(1)  //Dumb workaround for issued caused by goto exit_prog throughout code
+  {
+  tInfoTree = new TTree("tInfoTree", "tInfoTree");  
+  
+  TObjString* tCommentString = new TObjString("Test comment string");
+  double tTMWwidthInSec = TMWwidth*25e-12;  //widht given in number of clock cycles
+  double tPrecision = tRes;
+  
+  time_t now = std::time(0);
+  tm *ltm = std::localtime(&now);
+  TString tTimeTagString = TString::Format("%04d%02d%02d%02d%02d%02d",
+                                            ltm->tm_year+1900,
+                                            ltm->tm_mon+1, 
+                                            ltm->tm_mday, 
+                                            ltm->tm_hour, 
+                                            ltm->tm_min, 
+                                            ltm->tm_sec);
+  int tTimeTagInt = tTimeTagString.Atoi();
+  
+  //-----
+  
+  tInfoTree->Branch("Comment", &tCommentString);
+  tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec);
+  tInfoTree->Branch("Precision", &tPrecision);
+  tInfoTree->Branch("TimeStamp", &tTimeTagInt);
+  
+  tInfoTree->Fill();
+
+
+  }
+  //----------------------------------------------------------------------  
   
   //-------Initialize histograms for real-time monitoring
   tRealTimeCFs->Add(new TH1D("tAutoCF1", "tAutoCF1", 2000, -2500000*tRes, 2500000*tRes));

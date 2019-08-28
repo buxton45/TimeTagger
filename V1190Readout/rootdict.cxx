@@ -106,7 +106,7 @@ TClass *TimeTaggerEvent::Dictionary()
 //______________________________________________________________________________
 TClass *TimeTaggerEvent::Class()
 {
-   if (!fgIsA.load()) { R__LOCKGUARD(gInterpreterMutex); fgIsA = ::ROOT::GenerateInitInstanceLocal((const ::TimeTaggerEvent*)0x0)->GetClass(); }
+   if (!fgIsA.load()) { R__LOCKGUARD2(gInterpreterMutex); fgIsA = ::ROOT::GenerateInitInstanceLocal((const ::TimeTaggerEvent*)0x0)->GetClass(); }
    return fgIsA;
 }
 
@@ -167,14 +167,14 @@ namespace ROOT {
 namespace {
   void TriggerDictionaryInitialization_rootdict_Impl() {
     static const char* headers[] = {
-"src/AddOn/TimeTaggerEvent.h",
+"/home/jesse/Analysis/TimeTagger/V1190Readout/src/AddOn/TimeTaggerEvent.h",
 0
     };
     static const char* includePaths[] = {
-"/home/jesse/alice/sw/ubuntu1804_x86-64/ROOT/v6-16-00-1/include",
+"/home/jesse/alice/sw/ubuntu1604_x86-64/ROOT/v6-10-08-7/include",
 "/home/jesse/Analysis/TimeTagger/V1190Readout/src/AddOn",
-"/home/jesse/alice/sw/ubuntu1804_x86-64/ROOT/v6-16-00-1/include",
-"/home/jesse/Analysis/TimeTagger/V1190Readout/",
+"/HDDhome/alice/sw/ubuntu1604_x86-64/ROOT/v6-10-08-7/include",
+"/HDDhome/Analysis/TimeTagger/V1190Readout/",
 0
     };
     static const char* fwdDeclCode = R"DICTFWDDCLS(
@@ -183,7 +183,7 @@ namespace {
 #pragma clang diagnostic ignored "-Wignored-attributes"
 #pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
 extern int __Cling_Autoloading_Map;
-class __attribute__((annotate(R"ATTRDUMP(this way, if I include more detectors, it is recorded)ATTRDUMP"))) __attribute__((annotate("$clingAutoload$src/AddOn/TimeTaggerEvent.h")))  TimeTaggerEvent;
+class __attribute__((annotate(R"ATTRDUMP(this way, if I include more detectors, it is recorded)ATTRDUMP"))) __attribute__((annotate("$clingAutoload$/home/jesse/Analysis/TimeTagger/V1190Readout/src/AddOn/TimeTaggerEvent.h")))  TimeTaggerEvent;
 )DICTFWDDCLS";
     static const char* payloadCode = R"DICTPAYLOAD(
 #line 1 "rootdict dictionary payload"
@@ -193,7 +193,7 @@ class __attribute__((annotate(R"ATTRDUMP(this way, if I include more detectors, 
 #endif
 
 #define _BACKWARD_BACKWARD_WARNING_H
-#include "src/AddOn/TimeTaggerEvent.h"
+#include "/home/jesse/Analysis/TimeTagger/V1190Readout/src/AddOn/TimeTaggerEvent.h"
 
 #undef  _BACKWARD_BACKWARD_WARNING_H
 )DICTPAYLOAD";
@@ -205,7 +205,7 @@ nullptr};
     if (!isInitialized) {
       TROOT::RegisterModule("rootdict",
         headers, includePaths, payloadCode, fwdDeclCode,
-        TriggerDictionaryInitialization_rootdict_Impl, {}, classesHeaders, /*has no C++ module*/false);
+        TriggerDictionaryInitialization_rootdict_Impl, {}, classesHeaders);
       isInitialized = true;
     }
   }
