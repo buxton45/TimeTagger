@@ -16,3 +16,6 @@ CAENVMELib-2.50*
 *.pcm
 *rootdict.cxx
 *.txt
+*.root
+V1190Readout/V1190Readout
+*run*
