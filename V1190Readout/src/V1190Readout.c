@@ -397,6 +397,16 @@ int main(int argc, char *argv[])
   tGCan->Divide(2,1);
 
   TH1D* tPhaseSpace;
+
+  time_t now = std::time(0);
+  tm *ltm = std::localtime(&now);
+  TString tTimeTagString = TString::Format("%02d%02d%02d%02d%02d",
+                                            ltm->tm_year-100,
+                                            ltm->tm_mon+1, 
+                                            ltm->tm_mday, 
+                                            ltm->tm_hour, 
+                                            ltm->tm_min);
+  UInt_t  tTimeTagInt = tTimeTagString.Atoi();
 	//----------------------
 
     //int Tref;
@@ -551,12 +561,7 @@ int main(int argc, char *argv[])
 	if (RawData == 1){
 		fr = fopen("Raw_Data.txt", "w");
 		
-		time_t now = std::time(0);
-		tm *ltm = std::localtime(&now);
-		TString tTreeFileName = TString::Format("%stTreeFile_%04d%02d%02d_%02d%02d.root",
-		                                         tSaveDirBase, 
-		                                         ltm->tm_year+1900, ltm->tm_mon+1, ltm->tm_mday,
-		                                         ltm->tm_hour, ltm->tm_min);
+		TString tTreeFileName = TString::Format("%sRun%s.root", tSaveDirBase, tTimeTagString.Data());
 		tTreeFile = new TFile(tTreeFileName, "RECREATE");	
 
 	  tTTE = new TimeTaggerEvent();
@@ -652,25 +657,11 @@ int main(int argc, char *argv[])
   Float_t tTMWwidthInSec = TMWwidth*25e-9;  //widht given in number of clock cycles
   Float_t tPrecision = tRes;
   
-  time_t now = std::time(0);
-  tm *ltm = std::localtime(&now);
-  TString tTimeTagString = TString::Format("%02d%02d%02d%02d%02d%02d",
-                                            ltm->tm_year-100,
-                                            ltm->tm_mon+1, 
-                                            ltm->tm_mday, 
-                                            ltm->tm_hour, 
-                                            ltm->tm_min, 
-                                            ltm->tm_sec);
-  ULong_t tTimeTagLong = tTimeTagString.Atoll();
-  tTimeTagString.Remove(tTimeTagString.Length()-2);
-  UInt_t  tTimeTagInt = tTimeTagString.Atoi();
-  
   //-----
   
   tInfoTree->Branch("Comment", &tCommentString);
   tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec, "TimeWindowSize/F");
   tInfoTree->Branch("Precision", &tPrecision, "Precision/F");
-  tInfoTree->Branch("TimeStampLong", &tTimeTagLong, "TimeStampLong/l");
   tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");
   
   tInfoTree->Fill();
@@ -785,7 +776,7 @@ int main(int argc, char *argv[])
                         ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, tRealTimeCFs, tRealTimeCanvases, tTimes1, tTimes2, tGCan, tPhaseSpace, 1, 8);
 			for(r=0; r<nb/4; r++)
 			{
-				fprintf(fr, "%8x\n", buff[r]);
+//				fprintf(fr, "%8x\n", buff[r]);  //For now, just turn off .txt output
 
 				if(IS_TDC_ERROR(buff[r])) tNErrs++;
 				if(IS_GLOBAL_TRAILER(buff[r]) && ((buff[r]>>24) & 0x7) != 0) tNErrs++;
