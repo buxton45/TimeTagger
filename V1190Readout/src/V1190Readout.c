@@ -634,26 +634,26 @@ int main(int argc, char *argv[])
   tInfoTree = new TTree("tInfoTree", "tInfoTree");  
   
   TObjString* tCommentString = new TObjString("Test comment string");
-  double tTMWwidthInSec = TMWwidth*25e-12;  //widht given in number of clock cycles
-  double tPrecision = tRes;
+  Float_t tTMWwidthInSec = TMWwidth*25e-9;  //widht given in number of clock cycles
+  Float_t tPrecision = tRes;
   
   time_t now = std::time(0);
   tm *ltm = std::localtime(&now);
-  TString tTimeTagString = TString::Format("%04d%02d%02d%02d%02d%02d",
-                                            ltm->tm_year+1900,
+  TString tTimeTagString = TString::Format("%02d%02d%02d%02d%02d%02d",
+                                            ltm->tm_year-100,
                                             ltm->tm_mon+1, 
                                             ltm->tm_mday, 
                                             ltm->tm_hour, 
                                             ltm->tm_min, 
                                             ltm->tm_sec);
-  int tTimeTagInt = tTimeTagString.Atoi();
+  UInt_t tTimeTagInt = tTimeTagString.Atoi();
   
   //-----
   
   tInfoTree->Branch("Comment", &tCommentString);
-  tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec);
-  tInfoTree->Branch("Precision", &tPrecision);
-  tInfoTree->Branch("TimeStamp", &tTimeTagInt);
+  tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec, "TimeWindowSize/F");
+  tInfoTree->Branch("Precision", &tPrecision, "Precision/F");
+  tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");
   
   tInfoTree->Fill();
 
