@@ -334,12 +334,33 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
 
 }
 
+// ---------------------------------------------------------------------------
+TObjString* GetComments()
+{
+  std::string line;
+  TString tString;
+  std::string endString ("end");
+
+  cout << "Insert comments, return character is fine, " << 
+          "enter 'end', or enter empty comment, when finished" << endl;
+
+  while (std::getline(std::cin, line))
+  {
+    if(!line.compare("end") || line.length()==0) break;
+    tString.Append(TString::Format("%s\n", line.c_str()));
+  }
+  TObjString* tReturn = new TObjString(tString);
+  return tReturn;
+}
+
 // ###########################################################################
 // MAIN
 // ###########################################################################
 int main(int argc, char *argv[])
 {
     TApplication theApp("App", &argc, argv);
+
+    TObjString* tCommentString = GetComments();
 
     unsigned short fwrev, ctrl, ErrorFlags=0, opcd[10];
 	int sn, BoardType;
@@ -633,7 +654,6 @@ int main(int argc, char *argv[])
   {
   tInfoTree = new TTree("tInfoTree", "tInfoTree");  
   
-  TObjString* tCommentString = new TObjString("Test comment string");
   Float_t tTMWwidthInSec = TMWwidth*25e-9;  //widht given in number of clock cycles
   Float_t tPrecision = tRes;
   
@@ -646,18 +666,19 @@ int main(int argc, char *argv[])
                                             ltm->tm_hour, 
                                             ltm->tm_min, 
                                             ltm->tm_sec);
-  UInt_t tTimeTagInt = tTimeTagString.Atoi();
+  ULong_t tTimeTagLong = tTimeTagString.Atoll();
+  tTimeTagString.Remove(tTimeTagString.Length()-2);
+  UInt_t  tTimeTagInt = tTimeTagString.Atoi();
   
   //-----
   
   tInfoTree->Branch("Comment", &tCommentString);
   tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec, "TimeWindowSize/F");
   tInfoTree->Branch("Precision", &tPrecision, "Precision/F");
+  tInfoTree->Branch("TimeStampLong", &tTimeTagLong, "TimeStampLong/l");
   tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");
   
   tInfoTree->Fill();
-
-
   }
   //----------------------------------------------------------------------  
   
