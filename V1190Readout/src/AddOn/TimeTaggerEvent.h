@@ -15,7 +15,7 @@
 //#include <stdio.h>
 //#include <iostream>
 
-#define _Ndetectors 2
+#define _Ndetectors 16
 
 class TimeTaggerEvent : public TObject {
  public:

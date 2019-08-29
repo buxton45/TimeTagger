@@ -263,20 +263,18 @@ void FillCF(TH1D* aCF, vector<float> &aData1, vector<float> &aData2)
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, TH1D* aTimes1, TH1D* aTimes2, TCanvas* aGCan, TH1D* aPhaseSpace, unsigned int aCh1=1, unsigned int aCh2=8)
+void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, TH1D* aTimes1, TH1D* aTimes2, TCanvas* aGCan, TH1D* aPhaseSpace, unsigned int aChRealTime1=1, unsigned int aChRealTime2=8)
 {
-  vector<float> tData1(0);
-  vector<float> tData2(0);
-  tData1.reserve(aNb);
-  tData2.reserve(aNb);  
+  int tNChannels=16;
+  vector<vector<float> > tData(tNChannels, vector<float>(0));
+  for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].reserve(aNb);
   int tEventNumber = -1;
+  
   for(int i=0; i<aNb/4; i++)
   {
     if(IS_GLOBAL_HEADER(aBuff[i]))
     {
-      assert(tData1.size()==0);
-      assert(tData2.size()==0);     
-      
+      for(unsigned int iCh=0; iCh<tData.size(); iCh++) assert(tData[iCh].size()==0);  //TODO not vital, just safeguard         
       tEventNumber = DATA_EVENT_COUNTER(aBuff[i]);
       aTTE->SetEventNumber(DATA_EVENT_COUNTER(aBuff[i])); 
       aTTE->SetGulpNumber(aGulp);
@@ -284,15 +282,13 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
     else if(IS_GLOBAL_TRAILER(aBuff[i]))
     {
       if(((aBuff[i]>>24) & 0x7) != 0) aTTE->SetContainsError(true);
-      
-      aTTE->SetTimeList(0, tData1.size(), tData1.data());
-      aTTE->SetTimeList(1, tData2.size(), tData2.data());
+      for(unsigned int iCh=0; iCh<tData.size(); iCh++) aTTE->SetTimeList(iCh, tData[iCh].size(), tData[iCh].data());
       if(!aTTE->ContainsError()) aTTETree->Fill();
-      
+      //-------------------------------------------
       //Fill real-time histograms
-      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData1, aTimes1);
-      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData2, aTimes2);
-      FillCF((TH1D*)aRealTimeCFs->At(2), tData1, tData2);    
+      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData[aChRealTime1], aTimes1);
+      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData[aChRealTime2], aTimes2);
+      FillCF((TH1D*)aRealTimeCFs->At(2), tData[aChRealTime1], tData[aChRealTime2]);  
       
       //Draw real-time histograms if tEventNumber%1000==0 
       if(tEventNumber%1000==0 && tEventNumber>0)
@@ -317,15 +313,14 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
         aGCan->Update();    
       }
       
-      tData1.clear();
-      tData2.clear();
+      for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].clear();
       aTTE->Reset();
     }    
     else if(IS_TDC_DATA(aBuff[i]))
     {
-      if     (DATA_CH_25(aBuff[i])==aCh1) tData1.push_back(aRes*DATA_MEAS_25(aBuff[i]));
-      else if(DATA_CH_25(aBuff[i])==aCh2) tData2.push_back(aRes*DATA_MEAS_25(aBuff[i]));
-      else assert(0);
+      int tChannel = DATA_CH_25(aBuff[i]);
+      assert(tChannel>=0 && tChannel<16);  //TODO not vital, just safeguard
+      tData[tChannel].push_back(aRes*DATA_MEAS_25(aBuff[i]));  
     }
     else if(IS_TDC_ERROR(aBuff[i])) aTTE->SetContainsError(true);
     else continue;

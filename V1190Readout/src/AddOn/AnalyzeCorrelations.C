@@ -17,12 +17,16 @@ void AnalyzeCorrelations(){
 
  // gROOT->ProcessLine(".L TimeTaggerEvent.cxx+");
 
+  vector<int> tDetecors{1, 8};
+
   float tPrecision = 25e-12;
-  TH1D* autoCF[2];
-  for (int idet=0; idet<2; idet++){
-    autoCF[idet] = new TH1D(Form("autoCF%d",idet+1),Form("autoCF%d",idet+1), 12500, -2500000*tPrecision, 2500000*tPrecision);
+  TH1D* autoCF[tDetecors.size()];
+  for (int idet=0; idet<tDetecors.size(); idet++){
+    autoCF[idet] = new TH1D(Form("autoCF%d",tDetecors[idet]),Form("autoCF%d",tDetecors[idet]), 12500, -2500000*tPrecision, 2500000*tPrecision);
   }
-  TH1D* corr = new TH1D("CorrFctn","CorrFctn", 12500, -2500000*tPrecision, 2500000*tPrecision);
+  TH1D* corr = new TH1D(TString::Format("CorrFctn_%d%d", tDetecors[0], tDetecors[1]),
+                        TString::Format("CorrFctn_%d%d", tDetecors[0], tDetecors[1]), 
+                        12500, -2500000*tPrecision, 2500000*tPrecision);
 
   TFile* theFile = new TFile("/home/jesse/Analysis/TimeTagger/Data/tTreeFile_20190816_1356.root","READ");
   TTree* tr = (TTree*)theFile->Get("tTTETree"); 
@@ -37,23 +41,23 @@ void AnalyzeCorrelations(){
   for (int i=0; i<nev; i++){
     tr->GetEvent(i);
     cout << "Event " << i
-	 << " : detector 1 has " << tte->TimeList(0)->GetSize()
-	 << " | detector 2 has " << tte->TimeList(1)->GetSize()
+	 << " : detector " << tDetectors[0] << " has " << tte->TimeList(tDetectors[0])->GetSize()
+	 << " | detector " << tDetectors[1] << " has " << tte->TimeList(tDetectors[1])->GetSize()
 	 << endl;
     // auto correlations...
-    for (int idet=0; idet<2; idet++){
-      float* times = tte->TimeList(idet)->fArray;
-      for (int t1=0; t1<tte->TimeList(idet)->GetSize()-1; t1++){
-	for (int t2=t1+1; t2<tte->TimeList(idet)->GetSize(); t2++){
+    for (int idet=0; idet<tDetectors.size(); idet++){
+      float* times = tte->TimeList(tDetectors[idet])->fArray;
+      for (int t1=0; t1<tte->TimeList(tDetectors[idet])->GetSize()-1; t1++){
+	for (int t2=t1+1; t2<tte->TimeList(tDetectors[idet])->GetSize(); t2++){
 	  autoCF[idet]->Fill(times[t1]-times[t2]);
 	}
       }
     }
     // 2-detector correlation function
-    float* times1 = tte->TimeList(0)->fArray;
-    float* times2 = tte->TimeList(1)->fArray;
-    for (int t1=0; t1<tte->TimeList(0)->GetSize(); t1++){
-      for (int t2=0; t2<tte->TimeList(1)->GetSize(); t2++){
+    float* times1 = tte->TimeList(tDetectors[0])->fArray;
+    float* times2 = tte->TimeList(tDetectors[1])->fArray;
+    for (int t1=0; t1<tte->TimeList(tDetectors[0])->GetSize(); t1++){
+      for (int t2=0; t2<tte->TimeList(tDetectors[1])->GetSize(); t2++){
 	corr->Fill(times1[t1]-times2[t2]);
       }
     }
