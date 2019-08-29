@@ -40,8 +40,17 @@ TRIGGER_WINDOW  2047 -2048
 
 # ----------------------------------------------------------------
 # Channel Mask
+#   Want hex number representing 16-bit number, where
+#	bit 0  -> channel 0
+#	bit 1  -> channel 1
+#	...
+#	bit 15 -> channel 15
+#
+#	e.g. FFFF = 1111111111111111 = all on
+#	e.g.  102 = 0000000100000010 = channels 1 and 8 on
 # ----------------------------------------------------------------
-CHANNEL_MASK  FFFF
+#CHANNEL_MASK  FFFF
+CHANNEL_MASK  102
 
 
 # ----------------------------------------------------------------

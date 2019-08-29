@@ -662,6 +662,7 @@ int main(int argc, char *argv[])
   tInfoTree->Branch("Comment", &tCommentString);
   tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec, "TimeWindowSize/F");
   tInfoTree->Branch("Precision", &tPrecision, "Precision/F");
+  tInfoTree->Branch("ChannelMask", &ChMask, "ChannelMask/i");
   tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");
   
   tInfoTree->Fill();
