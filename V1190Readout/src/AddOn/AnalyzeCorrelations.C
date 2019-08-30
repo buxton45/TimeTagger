@@ -45,8 +45,24 @@ void AnalyzeCorrelations(){
   tInfoTree->GetEvent(0);
   cout << "tCommentObjString->GetString() = " << tCommentObjString->GetString() << endl << endl;
   cout << "tChMask = " << tChMask << endl;
-  std::string tChMask_binary = std::bitset<16>(tChMask).to_string();
+  std::string tChMask_binary_string = std::bitset<16>(tChMask).to_string();
+  cout << "tChMask_binary_string = " << tChMask_binary_string << endl;
+  
+  std::bitset<16> tChMask_binary (tChMask);
   cout << "tChMask_binary = " << tChMask_binary << endl;
+  cout << "tChMask_binary.size() = " << tChMask_binary.size() << endl;
+
+  vector<int> tActiveChannels(0);
+  for(int i=0; i<tChMask_binary.size(); i++)
+  {
+    if(tChMask_binary[i]) 
+    {
+      cout << i << " is on" << endl;
+      tActiveChannels.push_back(i);
+    }
+    else                  cout << i << " is off" << endl;
+  }
+  for(int i=0; i<tActiveChannels.size(); i++) cout << "Channel " << tActiveChannels[i] << " is active" << endl;
 
   TimeTaggerEvent* tte=new TimeTaggerEvent;
   TBranch* tBr = tr->GetBranch("TimeBranch");

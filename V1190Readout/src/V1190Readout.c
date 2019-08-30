@@ -93,6 +93,7 @@
 #include <ctime>
 #include <iostream>
 #include <string>
+#include <bitset>
 using std::vector;
 using std::cout;
 using std::endl;
@@ -238,7 +239,7 @@ void PlotHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChToPl
 }
 
 // ---------------------------------------------------------------------------
-void FillAutoCF(TH1D* aAutoCF, vector<float> &aData, TH1D* aTimes)
+void FillAutoCF(TH1D* aAutoCF, const vector<float> &aData, TH1D* aTimes)
 {
   for(unsigned int i=0; i<aData.size(); i++)
   {
@@ -251,7 +252,7 @@ void FillAutoCF(TH1D* aAutoCF, vector<float> &aData, TH1D* aTimes)
 }
 
 // ---------------------------------------------------------------------------
-void FillCF(TH1D* aCF, vector<float> &aData1, vector<float> &aData2)
+void FillCF(TH1D* aCF, const vector<float> &aData1, const vector<float> &aData2)
 {
   for(unsigned int i1=0; i1<aData1.size(); i1++)
   {
@@ -263,7 +264,92 @@ void FillCF(TH1D* aCF, vector<float> &aData1, vector<float> &aData2)
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRealTimeCFs, TObjArray* aRealTimeCanvases, TH1D* aTimes1, TH1D* aTimes2, TCanvas* aGCan, TH1D* aPhaseSpace, unsigned int aChRealTime1=1, unsigned int aChRealTime2=8)
+unsigned int GetPositionInArray(unsigned int aGridSize, unsigned int aI, unsigned int aJ)
+{
+//For example, in the diagram below
+
+//     j=0   
+//       |
+// i=0-- 0   1   2   3              0   1   2   3
+//       4   5   6   7    -------->     4   5   6
+//       8   9   10  11   -------->         7   8
+//       12  13  14  15                         9
+
+  return aI*aGridSize + aJ - aI*(aI+1)/2;  //Note: aI*(aI+1)/2 = 1 + 2 + ... + I
+}
+
+// ---------------------------------------------------------------------------
+void FillAllCFsAndTimes(const vector<unsigned int> &aActiveChannels, TObjArray* aRTCFs, TObjArray* aRTAbsTimes, const vector<vector<float> > &aData)
+{
+  unsigned int tCFPosInArr=-1;
+  for(unsigned int i=0; i<aActiveChannels.size(); i++)
+  {
+    for(unsigned int j=i; j<aActiveChannels.size(); j++)
+    {
+      tCFPosInArr = GetPositionInArray(aActiveChannels.size(), i, j);
+      if(i==j)
+      {
+cout << "About to call FillAutoCF.........................." << endl;
+cout << "((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() = " << ((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() << endl;
+cout << "aActiveChannels[i] = " << aActiveChannels[i] << endl;
+cout << "((TH1D*)aRTAbsTimes->At(i))->GetTitle() = " << ((TH1D*)aRTAbsTimes->At(i))->GetTitle() << endl << endl;
+        FillAutoCF((TH1D*)aRTCFs->At(tCFPosInArr), aData[aActiveChannels[i]], (TH1D*)aRTAbsTimes->At(i));
+      }
+      else
+      {
+cout << "About to call FillCF........................." << endl;
+cout << "((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() = " << ((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() << endl;
+cout << "aActiveChannels[i] = " << aActiveChannels[i] << endl;
+cout << "aActiveChannels[j] = " << aActiveChannels[j] << endl << endl;
+        FillCF((TH1D*)aRTCFs->At(tCFPosInArr), aData[aActiveChannels[i]], aData[aActiveChannels[j]]);       
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+void DrawAllCFs(unsigned int aNActiveChannels, TObjArray* aRTCFs, TObjArray* aRTCanvases, TH1D* aPhaseSpace)
+{
+  unsigned int tCFPosInArr=-1;
+  unsigned int tPadNumber=-1;
+  TH1D* tNormCFToDraw;
+  TCanvas* tRTCanCFs     = (TCanvas*)aRTCanvases->At(0);
+  TCanvas* tRTCanCFsZoom = (TCanvas*)aRTCanvases->At(1);
+  for(unsigned int i=0; i<aNActiveChannels; i++)
+  {
+    for(unsigned int j=i; j<aNActiveChannels; j++)
+    {
+      tCFPosInArr = GetPositionInArray(aNActiveChannels, i, j);
+      tNormCFToDraw = (TH1D*)((TH1D*)aRTCFs->At(tCFPosInArr))->Clone(TString::Format("Norm_%s", ((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle()));
+      tNormCFToDraw->Divide(aPhaseSpace);
+      
+      tPadNumber = i*aNActiveChannels + j + 1; //+1 because pad numbering starts at 1, not 0!
+      tRTCanCFs->cd(tPadNumber);
+      tNormCFToDraw->DrawCopy();
+      
+      tNormCFToDraw->GetXaxis()->SetRangeUser(-0.000005, 0.000005);
+      tRTCanCFsZoom->cd(tPadNumber);
+      tNormCFToDraw->DrawCopy();      
+    }
+  }
+  tRTCanCFs->Update();
+  tRTCanCFsZoom->Update();
+  tNormCFToDraw->Delete();
+}
+
+// ---------------------------------------------------------------------------
+void DrawAllAbsTimes(unsigned int aNActiveChannels, TObjArray* aRTAbsTimes, TCanvas* aCan)
+{
+  for(unsigned int i=0; i<aNActiveChannels; i++)
+  {
+    aCan->cd(i+1); //+1 because pad numbering starts at 1, not 0!
+    ((TH1D*)aRTAbsTimes->At(i))->DrawCopy();
+  }
+  aCan->Update();
+}
+
+// ---------------------------------------------------------------------------
+void ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRTCFs, TObjArray* aRTAbsTimes, TObjArray* aRTCanvases, TH1D* aPhaseSpace, unsigned int aChRT1=1, unsigned int aChRT2=8)
 {
   int tNChannels=16;
   vector<vector<float> > tData(tNChannels, vector<float>(0));
@@ -286,31 +372,13 @@ void ExtractEventsAndLoadTree(const double aRes, int aGulp, int aNb, unsigned in
       if(!aTTE->ContainsError()) aTTETree->Fill();
       //-------------------------------------------
       //Fill real-time histograms
-      FillAutoCF((TH1D*)aRealTimeCFs->At(0), tData[aChRealTime1], aTimes1);
-      FillAutoCF((TH1D*)aRealTimeCFs->At(1), tData[aChRealTime2], aTimes2);
-      FillCF((TH1D*)aRealTimeCFs->At(2), tData[aChRealTime1], tData[aChRealTime2]);  
+      FillAllCFsAndTimes(aActiveChannels, aRTCFs, aRTAbsTimes, tData);
       
       //Draw real-time histograms if tEventNumber%1000==0 
       if(tEventNumber%1000==0 && tEventNumber>0)
       {
-        for(int i=0; i<aRealTimeCanvases->GetEntries(); i++)
-        {
-          TH1D* tNorm = (TH1D*)((TH1D*)aRealTimeCFs->At(i))->Clone(TString::Format("tNorm_%d", i));
-          tNorm->Divide(aPhaseSpace);
-
-          ((TCanvas*)aRealTimeCanvases->At(i))->cd(1);
-          tNorm->DrawCopy();
-          tNorm->GetXaxis()->SetRangeUser(-0.000005, 0.000005);
-          ((TCanvas*)aRealTimeCanvases->At(i))->cd(2);
-          tNorm->DrawCopy();
-          ((TCanvas*)aRealTimeCanvases->At(i))->Update();
-          tNorm->Delete();
-        }     
-        aGCan->cd(1);
-        aTimes1->DrawCopy();
-        aGCan->cd(2);
-        aTimes2->DrawCopy();     
-        aGCan->Update();    
+        DrawAllCFs(aActiveChannels.size(), aRTCFs, aRTCanvases, aPhaseSpace);
+        DrawAllAbsTimes(aActiveChannels.size(), aRTAbsTimes, (TCanvas*)aRTCanvases->At(0));
       }
       
       for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].clear();
@@ -348,9 +416,42 @@ TObjString* GetComments()
   return tReturn;
 }
 
-// ###########################################################################
-// MAIN
-// ###########################################################################
+// ---------------------------------------------------------------------------
+vector<unsigned int> GetActiveChannels(const int aChMask)
+{
+  std::bitset<16> tChMask_binary (aChMask);
+  cout << "tChMask_binary = " << tChMask_binary << endl;
+  vector<unsigned int> tActiveChannels(0);
+  for(unsigned int i=0; i<tChMask_binary.size(); i++)
+  {
+    if(tChMask_binary[i]) tActiveChannels.push_back(i);
+  }
+  for(unsigned int i=0; i<tActiveChannels.size(); i++) cout << "Channel " << tActiveChannels[i] << "is active" << endl;
+  cout << endl;
+  return tActiveChannels;
+}
+
+// ---------------------------------------------------------------------------
+unsigned int fact(int aN)
+{
+  //factorial (should only be used for small numbers, i.e. small enough to fit in int
+  unsigned int tResult = 1;
+  for(int i=1; i<=aN; i++) tResult *= i;
+  return tResult;
+}
+
+// ---------------------------------------------------------------------------
+unsigned int GetNumberOfCFsToDraw(int aNActiveChannels)
+{
+  //Number of correlation functions is nCr, 
+  //  where r=2, and n=aNActiveChannels
+  //Number of auto-correlations is aNActiveChannels
+  return aNActiveChannels + fact(aNActiveChannels)/(fact(2)*fact(aNActiveChannels-2));
+}
+
+// ##################################################################################################################
+// ------------------------------------------------------------------------------------------------------------------
+// ##################################################################################################################
 int main(int argc, char *argv[])
 {
     TApplication theApp("App", &argc, argv);
@@ -376,7 +477,8 @@ int main(int argc, char *argv[])
 	//----------------------
 	int tNGulps=0;
 	int tNErrs=0;
-
+  vector<unsigned int> tActiveChannels(0);
+  unsigned int tNCFsToDraw;
 	
 	char tSaveDirBase[1000];
   TFile* tTreeFile;
@@ -388,14 +490,10 @@ int main(int argc, char *argv[])
 	unsigned int EnSubTrg, SetRes;
 	double tRes;
 	
-  TObjArray* tRealTimeCFs = new TObjArray();
-  TObjArray* tRealTimeCanvases = new TObjArray();
-
-  TH1D* tTimes1 = new TH1D("tTimes1", "tTimes1", 2000, 0., 0.000055);
-  TH1D* tTimes2 = new TH1D("tTimes2", "tTimes2", 2000, 0., 0.000055);
-  TCanvas* tGCan = new TCanvas("tGCan", "tGCan");
-  tGCan->Divide(2,1);
-
+	//RT = real time
+  TObjArray* tRTCFs = new TObjArray();
+  TObjArray* tRTCanvases = new TObjArray();
+  TObjArray* tRTAbsTimes = new TObjArray();
   TH1D* tPhaseSpace;
 
   time_t now = std::time(0);
@@ -668,17 +766,55 @@ int main(int argc, char *argv[])
   tInfoTree->Fill();
   }
   //----------------------------------------------------------------------  
-  
   //-------Initialize histograms for real-time monitoring
-  tRealTimeCFs->Add(new TH1D("tAutoCF1", "tAutoCF1", 2000, -2500000*tRes, 2500000*tRes));
-  tRealTimeCFs->Add(new TH1D("tAutoCF2", "tAutoCF2", 2000, -2500000*tRes, 2500000*tRes));
-  tRealTimeCFs->Add(new TH1D("tCF","tCF", 2000, -2500000*tRes, 2500000*tRes));    
-
-  tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF1", "tCan_AutoCF1"));
-  tRealTimeCanvases->Add(new TCanvas("tCan_AutoCF2", "tCan_AutoCF2"));
-  tRealTimeCanvases->Add(new TCanvas("tCan_CF", "tCan_CF"));  
-
-  tPhaseSpace = (TH1D*)((TH1D*)tRealTimeCFs->At(0))->Clone("tPhaseSpace");
+  tActiveChannels = GetActiveChannels(ChMask);
+  tNCFsToDraw = GetNumberOfCFsToDraw(tActiveChannels.size());
+  for(unsigned int i=0; i<tActiveChannels.size(); i++)
+  {
+    for(unsigned int j=i; j<tActiveChannels.size(); j++)
+    {
+      if(i==j)
+      {
+        tRTCFs->Add(new TH1D(TString::Format("tAutoCF_%u", tActiveChannels[i]), 
+                             TString::Format("tAutoCF_%u", tActiveChannels[i]), 
+                             2000, -2500000*tRes, 2500000*tRes));
+      }
+      else
+      {
+        tRTCFs->Add(new TH1D(TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
+                             TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
+                             2000, -2500000*tRes, 2500000*tRes));        
+      }
+    }
+  }
+  assert(tNCFsToDraw == (unsigned int)tRTCFs->GetEntries());  //TODO probably don't really need tNCFsToDraw
+  //----------
+  for(unsigned int i=0; i<tActiveChannels.size(); i++)
+  {
+    tRTAbsTimes->Add(new TH1D(TString::Format("tTimes_%u", tActiveChannels[i]), 
+                              TString::Format("tTimes_%u", tActiveChannels[i]), 
+                              2000, 0., 0.000055));
+  }
+  //----------
+  //NOTE: ExtractEventsAndLoadTree and methods within (e.g. DrawAllCFs) expect 
+  //      tRTCanvases->At(0) to contain a TCanvas for CFs (with tActiveChannels.size() x tActiveChannels.size() grid)
+  //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with tActiveChannels.size() x tActiveChannels.size() grid)
+  //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with tActiveChannels.size() x 1 grid)
+  tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs"));
+    ((TCanvas*)tRTCanvases->At(0))->Divide(tActiveChannels.size(), tActiveChannels.size());
+  tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom"));
+    ((TCanvas*)tRTCanvases->At(1))->Divide(tActiveChannels.size(), tActiveChannels.size());
+  tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes"));
+    ((TCanvas*)tRTCanvases->At(2))->Divide(tActiveChannels.size(), 1);   
+ /* 
+  for(int i=0; i<tRTCanvases->GetEntries(); i++)
+  {  
+//    ((TCanvas*)tRTCanvases->At(i))->Divide(tActiveChannels.size(), tActiveChannels.size());
+    ((TCanvas*)tRTCanvases->At(i))->Draw();
+  }  
+  */
+  //----------
+  tPhaseSpace = (TH1D*)((TH1D*)tRTCFs->At(0))->Clone("tPhaseSpace");
   for(int i=1; i<tPhaseSpace->GetNbinsX()+1; i++)
   {
     if(fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)) > tRes*pow(2., 21)) tPhaseSpace->SetBinContent(i, 0.);
@@ -688,11 +824,7 @@ int main(int argc, char *argv[])
     }
   }
   
-  for(int i=0; i<tRealTimeCanvases->GetEntries(); i++)
-  {  
-    ((TCanvas*)tRealTimeCanvases->At(i))->Divide(2,1);
-    ((TCanvas*)tRealTimeCanvases->At(i))->Draw();
-  }
+
   //--------------------------------------------------------------------------------
     
     printf("Board Ready. Press a key to start the acquisition ('q' to quit)\n");
@@ -774,7 +906,7 @@ int main(int argc, char *argv[])
 //		int r;
                 tNGulps++;
 		if (RawData == 1){
-                        ExtractEventsAndLoadTree(tRes, tNGulps, nb, buff, tTTE, tTTETree, tRealTimeCFs, tRealTimeCanvases, tTimes1, tTimes2, tGCan, tPhaseSpace, 1, 8);
+                        ExtractEventsAndLoadTree(tActiveChannels, tRes, tNGulps, nb, buff, tTTE, tTTETree, tRTCFs, tRTAbsTimes, tRTCanvases, tPhaseSpace, 1, 8);
 			for(r=0; r<nb/4; r++)
 			{
 //				fprintf(fr, "%8x\n", buff[r]);  //For now, just turn off .txt output
