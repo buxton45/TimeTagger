@@ -289,18 +289,22 @@ void FillAllCFsAndTimes(const vector<unsigned int> &aActiveChannels, TObjArray* 
       tCFPosInArr = GetPositionInArray(aActiveChannels.size(), i, j);
       if(i==j)
       {
+/*
 cout << "About to call FillAutoCF.........................." << endl;
 cout << "((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() = " << ((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() << endl;
 cout << "aActiveChannels[i] = " << aActiveChannels[i] << endl;
 cout << "((TH1D*)aRTAbsTimes->At(i))->GetTitle() = " << ((TH1D*)aRTAbsTimes->At(i))->GetTitle() << endl << endl;
+*/
         FillAutoCF((TH1D*)aRTCFs->At(tCFPosInArr), aData[aActiveChannels[i]], (TH1D*)aRTAbsTimes->At(i));
       }
       else
       {
+/*
 cout << "About to call FillCF........................." << endl;
 cout << "((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() = " << ((TH1D*)aRTCFs->At(tCFPosInArr))->GetTitle() << endl;
 cout << "aActiveChannels[i] = " << aActiveChannels[i] << endl;
 cout << "aActiveChannels[j] = " << aActiveChannels[j] << endl << endl;
+*/
         FillCF((TH1D*)aRTCFs->At(tCFPosInArr), aData[aActiveChannels[i]], aData[aActiveChannels[j]]);       
       }
     }
@@ -378,7 +382,7 @@ void ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const doubl
       if(tEventNumber%1000==0 && tEventNumber>0)
       {
         DrawAllCFs(aActiveChannels.size(), aRTCFs, aRTCanvases, aPhaseSpace);
-        DrawAllAbsTimes(aActiveChannels.size(), aRTAbsTimes, (TCanvas*)aRTCanvases->At(0));
+        DrawAllAbsTimes(aActiveChannels.size(), aRTAbsTimes, (TCanvas*)aRTCanvases->At(2));
       }
       
       for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].clear();
@@ -426,7 +430,7 @@ vector<unsigned int> GetActiveChannels(const int aChMask)
   {
     if(tChMask_binary[i]) tActiveChannels.push_back(i);
   }
-  for(unsigned int i=0; i<tActiveChannels.size(); i++) cout << "Channel " << tActiveChannels[i] << "is active" << endl;
+  for(unsigned int i=0; i<tActiveChannels.size(); i++) cout << "Channel " << tActiveChannels[i] << " is active" << endl;
   cout << endl;
   return tActiveChannels;
 }

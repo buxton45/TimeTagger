@@ -51,8 +51,8 @@ TRIGGER_WINDOW  2047 -2048
 #	e.g.  306 = 0000001100000110 = channels 1, 2, 8, and 9 on
 # ----------------------------------------------------------------
 #CHANNEL_MASK  FFFF
-CHANNEL_MASK  102
-
+#CHANNEL_MASK  102
+CHANNEL_MASK  306
 
 # ----------------------------------------------------------------
 # Enable subtraction of trigger time (i.e. time with respect to
