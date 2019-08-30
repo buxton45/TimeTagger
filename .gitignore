@@ -19,3 +19,5 @@ CAENVMELib-2.50*
 *.root
 V1190Readout/V1190Readout
 *run*
+
+!V1190Readout/V1190Config_Original.txt
