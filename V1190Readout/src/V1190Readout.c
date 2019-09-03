@@ -88,6 +88,8 @@
 #include "TObjArray.h"
 #include "TCanvas.h"
 #include "TApplication.h"
+#include "TGClient.h"
+
 #include <assert.h>
 #include <vector>
 #include <ctime>
@@ -777,11 +779,15 @@ int main(int argc, char *argv[])
     //      tRTCanvases->At(0) to contain a TCanvas for CFs (with tActiveChannels.size() x tActiveChannels.size() grid)
     //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with tActiveChannels.size() x tActiveChannels.size() grid)
     //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with tActiveChannels.size() x 1 grid)
-    tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs"));
+    
+    double tDispWidth  = gClient->GetDisplayWidth();
+    double tDispHeight = gClient->GetDisplayHeight();  
+    
+    tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs", 0, 0, tDispWidth/2, tDispHeight/2));
       ((TCanvas*)tRTCanvases->At(0))->Divide(tActiveChannels.size(), tActiveChannels.size());
-    tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom"));
+    tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom", tDispWidth/2, 0, tDispWidth/2, tDispHeight/2));
       ((TCanvas*)tRTCanvases->At(1))->Divide(tActiveChannels.size(), tActiveChannels.size());
-    tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes"));
+    tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes", tDispWidth/2, tDispHeight/2, tDispWidth/2, tDispHeight/2));
       ((TCanvas*)tRTCanvases->At(2))->Divide(tActiveChannels.size(), 1);     
   }
         

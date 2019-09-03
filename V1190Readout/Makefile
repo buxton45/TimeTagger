@@ -26,7 +26,7 @@ LIBS	=
 INCLUDEDIR =	-I.
 
 ROOT_LIBS   = $(shell root-config --libs)
-CFLAGS = $(shell root-config --cflags) -std=c++11 -I${ADDON_DIR}
+CFLAGS = $(shell root-config --cflags --glibs) -std=c++11 -I${ADDON_DIR}
 
 OBJS	=	src/$(EXE).o src/keyb.o ${ADDON_DIR}/TimeTaggerEvent.o ${ADDON_DIR}/TimeTaggerEvent.so rootdict.o
 
