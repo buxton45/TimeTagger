@@ -105,7 +105,8 @@ using std::endl;
 #define SWRELEASE     "1.1"
 //***************************************************************************
 
-#define NUM_CHANNELS   32
+//#define NUM_CHANNELS   32
+#define NUM_CHANNELS   16 // V1290N has 16 channels, not 32
 #define OUTFILE_NAME   "V1190EventList.txt"
 
 // ###########################################################################
@@ -116,7 +117,7 @@ unsigned int BaseAddress = 0xEE000000;
 int VMEerror = 0;
 FILE *gnuplot=NULL;
 int PlotError=0;
-int RawData=0;
+int RawDataTxt=0;
 char path[128];
 
 // ###########################################################################
@@ -188,54 +189,6 @@ int V1190WriteOpcode(int nw, unsigned short *Data)
 		}
     }
 	return 0;
-}
-
-
-// ---------------------------------------------------------------------------
-// Save the histograms to output files
-// ---------------------------------------------------------------------------
-void SaveHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChMask)
-{
-    FILE *fh;
-    int j,i;
-    char fname[100];
-    for(i=0; i<NUM_CHANNELS; i++) {
-		if ((1<<i) & ChMask) {
-			sprintf(fname, "%s\\Histo_%d.txt", path, i);
-			fh=fopen(fname, "w");
-			if(fh==NULL) break;
-			for(j=0; j<HistoNbin; j++)
-				fprintf(fh, "%d\n", Histo[i][j]);
-			fclose(fh);
-		}
-    }
-    printf("Histogram Files saved\n");
-}
-
-
-// ---------------------------------------------------------------------------
-// Plot the histograms 
-// ---------------------------------------------------------------------------
-void PlotHistograms(unsigned int *Histo[NUM_CHANNELS], int HistoNbin, int ChToPlot)
-{
-    FILE *fh;
-    int j;
-    
-    if (PlotError)
-        return;
-    if (gnuplot==NULL)
-        gnuplot = _popen("pgnuplot.exe", "w");
-    if (gnuplot==NULL) {
-        PlotError = 1;
-        return;
-    }
-    fh=fopen("plotdata.txt", "w");
-    for(j=0; j<HistoNbin; j++)
-        fprintf(fh, "%d\n", Histo[ChToPlot][j]);
-    fclose(fh);
-    fprintf(gnuplot, "set title 'Channel %d\n", ChToPlot);
-    fprintf(gnuplot, "plot 'plotdata.txt' with step\n");
-	fflush(gnuplot);
 }
 
 // ---------------------------------------------------------------------------
@@ -353,12 +306,13 @@ void DrawAllAbsTimes(unsigned int aNActiveChannels, TObjArray* aRTAbsTimes, TCan
 }
 
 // ---------------------------------------------------------------------------
-void ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRTCFs, TObjArray* aRTAbsTimes, TObjArray* aRTCanvases, TH1D* aPhaseSpace, unsigned int aChRT1=1, unsigned int aChRT2=8)
+unsigned int ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const double aRes, int aGulp, int aNb, unsigned int *aBuff, TimeTaggerEvent* aTTE, TTree* aTTETree, TObjArray* aRTCFs, TObjArray* aRTAbsTimes, TObjArray* aRTCanvases, TH1D* aPhaseSpace, bool aEnRTMonitor)
 {
   int tNChannels=16;
   vector<vector<float> > tData(tNChannels, vector<float>(0));
   for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].reserve(aNb);
   int tEventNumber = -1;
+  unsigned int tNErrorsInGulp = 0;
   
   for(int i=0; i<aNb/4; i++)
   {
@@ -371,20 +325,27 @@ void ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const doubl
     }
     else if(IS_GLOBAL_TRAILER(aBuff[i]))
     {
-      if(((aBuff[i]>>24) & 0x7) != 0) aTTE->SetContainsError(true);
+      if(((aBuff[i]>>24) & 0x7) != 0) 
+      {
+        aTTE->SetContainsError(true);
+        tNErrorsInGulp++;
+      }
       for(unsigned int iCh=0; iCh<tData.size(); iCh++) aTTE->SetTimeList(iCh, tData[iCh].size(), tData[iCh].data());
       if(!aTTE->ContainsError()) aTTETree->Fill();
       //-------------------------------------------
-      //Fill real-time histograms
-      FillAllCFsAndTimes(aActiveChannels, aRTCFs, aRTAbsTimes, tData);
-      
-      //Draw real-time histograms if tEventNumber%1000==0 
-      if(tEventNumber%1000==0 && tEventNumber>0)
+      if(aEnRTMonitor)
       {
-        DrawAllCFs(aActiveChannels.size(), aRTCFs, aRTCanvases, aPhaseSpace);
-        DrawAllAbsTimes(aActiveChannels.size(), aRTAbsTimes, (TCanvas*)aRTCanvases->At(2));
-      }
+        //Fill real-time histograms
+        FillAllCFsAndTimes(aActiveChannels, aRTCFs, aRTAbsTimes, tData);
       
+        //Draw real-time histograms if tEventNumber%1000==0 
+        if(tEventNumber%1000==0 && tEventNumber>0)
+        {
+          DrawAllCFs(aActiveChannels.size(), aRTCFs, aRTCanvases, aPhaseSpace);
+          DrawAllAbsTimes(aActiveChannels.size(), aRTAbsTimes, (TCanvas*)aRTCanvases->At(2));
+        }
+      }
+      //-------------------------------------------
       for(unsigned int iCh=0; iCh<tData.size(); iCh++) tData[iCh].clear();
       aTTE->Reset();
     }    
@@ -394,11 +355,14 @@ void ExtractEventsAndLoadTree(vector<unsigned int> &aActiveChannels, const doubl
       assert(tChannel>=0 && tChannel<16);  //TODO not vital, just safeguard
       tData[tChannel].push_back(aRes*DATA_MEAS_25(aBuff[i]));  
     }
-    else if(IS_TDC_ERROR(aBuff[i])) aTTE->SetContainsError(true);
+    else if(IS_TDC_ERROR(aBuff[i])) 
+    {
+      aTTE->SetContainsError(true);
+      tNErrorsInGulp++;
+    }
     else continue;
   }
-
-
+  return tNErrorsInGulp;
 }
 
 // ---------------------------------------------------------------------------
@@ -458,47 +422,53 @@ unsigned int GetNumberOfCFsToDraw(int aNActiveChannels)
 // ##################################################################################################################
 int main(int argc, char *argv[])
 {
-    TApplication theApp("App", &argc, argv);
+  TApplication theApp("App", &argc, argv);  //Needed for real time figures to be plotted with ROOT
+                                            //Without this, apparently ROOT runs in batch mode
+  TObjString* tCommentString = GetComments();
 
-    TObjString* tCommentString = GetComments();
-
-    unsigned short fwrev, ctrl, ErrorFlags=0, opcd[10];
-	int sn, BoardType;
+  unsigned short fwrev, ctrl, ErrorFlags=0, opcd[10];
+  int sn, BoardType;
     int TDCerrors=0, Ovf=0, TrgLost=0;
-    int Write2File=1, HistoNbin=12, HistoBinSize=1, TMWwidth=40, TMWoffs=-20;
-	int Quit=0, BufferSize, i, WordPnt, totnb=0, ChFound[NUM_CHANNELS], TimeAbs[NUM_CHANNELS];
-	unsigned int *Histo[NUM_CHANNELS], ChToPlot=1, ChMask;
-	int ChTref=0;
+    int Write2File=1, TMWwidth=40, TMWoffs=-20;
+  int Quit=0, BufferSize, i, WordPnt, totnb=0, ChFound[NUM_CHANNELS], TimeAbs[NUM_CHANNELS];
+  unsigned int ChMask;
+  int ChTref=0;
     unsigned int *buff;
     int CurrentTime, PreviousTime, ElapsedTime;
-	char tmpConfigFileName[100] = "V1190Config.txt";	// configuration file name
-	char ConfigFileName[255] = "V1190Config.txt";	// configuration file name
+  char tmpConfigFileName[100] = "V1190Config.txt";	// configuration file name
+  char ConfigFileName[255] = "V1190Config.txt";	// configuration file name
     char tmp[100], str[100];
     int ch, Rpnt, nb, ret, ErrorLevel=-1, time, Header=1;
-	int timerel;
-	int r;
+  int timerel;
+  int r;
 	
-	//----------------------
-	int tNGulps=0;
-	int tNErrs=0;
+  //----------------------
+  //Because of all the goto exit_prog, the compiler complains a lot when you try to declare variables within the body
+  //of the program.  So, we declare basically everything here.
+  int tNGulps=0;
+  int tNErrs=0;
   vector<unsigned int> tActiveChannels(0);
   unsigned int tNCFsToDraw;
 	
-	char tSaveDirBase[1000];
+  char tSaveDirBase[1000];
+  TString tTreeFileName;
   TFile* tTreeFile;
   TTree* tTTETree;
   TTree* tInfoTree;
   TimeTaggerEvent* tTTE;
   
 	
-	unsigned int EnSubTrg, SetRes;
-	double tRes;
+  unsigned int EnSubTrg, SetRes, EnRTMonitor;
+  double tRes;
 	
-	//RT = real time
+  //RT = real time
   TObjArray* tRTCFs = new TObjArray();
   TObjArray* tRTCanvases = new TObjArray();
   TObjArray* tRTAbsTimes = new TObjArray();
   TH1D* tPhaseSpace;
+  
+  Float_t tTMWwidthInSec;  //widht given in number of clock cycles
+  Float_t tPrecision;  
 
   time_t now = std::time(0);
   tm *ltm = std::localtime(&now);
@@ -511,28 +481,25 @@ int main(int argc, char *argv[])
   UInt_t  tTimeTagInt = tTimeTagString.Atoi();
 	//----------------------
 
-    //int Tref;
-    double TPrate, TRGrate;
-    FILE *f_ini, *fout, *fr;
-    unsigned long long TrgCnt=0, PrevTrgCnt=0, DiscardCnt[NUM_CHANNELS], HitCnt[NUM_CHANNELS],NegCnt[NUM_CHANNELS];
-	double mean[128], stddev[128];
-	int nstat[128];
+  //int Tref;
+  double TPrate, TRGrate;
+  FILE *f_ini, *fout, *fr;
+  unsigned long long TrgCnt=0, PrevTrgCnt=0, DiscardCnt[NUM_CHANNELS], HitCnt[NUM_CHANNELS],NegCnt[NUM_CHANNELS];
+  double mean[128], stddev[128];
+  int nstat[128];
 
-    printf("\n");
-    printf("**************************************************************\n");
-    printf("                      V1190Readout %s                         \n", SWRELEASE);
-    printf("**************************************************************\n");
+  printf("\n");
+  printf("**************************************************************\n");
+  printf("                      V1190Readout %s                         \n", SWRELEASE);
+  printf("**************************************************************\n");
 
-    buff = NULL;
-    for(i=0; i<NUM_CHANNELS; i++)
-        Histo[i] = NULL;
+  buff = NULL;
 
-    // ************************************************************************
-    // Read configuration file
-    // ************************************************************************
+  // ************************************************************************
+  // Read configuration file
+  // ************************************************************************
 
-	if (argc > 1)
-                strcpy(tmpConfigFileName, argv[1]);
+  if (argc > 1) strcpy(tmpConfigFileName, argv[1]);
 
 #ifdef  WIN32
 	sprintf(path, "%s\\VME\\", getenv("USERPROFILE"));
@@ -543,187 +510,177 @@ int main(int argc, char *argv[])
 	sprintf(ConfigFileName, "%s/%s", path, tmpConfigFileName);
 #endif
 
-    if ( (f_ini = fopen(ConfigFileName, "r")) == NULL ) {
-        printf("Can't open Configuration File %s\n", ConfigFileName);
-        goto exit_prog;
-    }
+  if ( (f_ini = fopen(ConfigFileName, "r")) == NULL ) 
+  {
+    printf("Can't open Configuration File %s\n", ConfigFileName);
+    goto exit_prog;
+  }
 
 	    
-    printf("Reading Configuration File %s\n", ConfigFileName);
-    while(!feof(f_ini)) {
-		int data, addr;
-		int nwopc, val;
-		unsigned short opcd[10];
-		int app;
+  printf("Reading Configuration File %s\n", ConfigFileName);
+  while(!feof(f_ini)) 
+  {
+    int data, addr;
+    int nwopc, val;
+    unsigned short opcd[10];
+    int app;
 		
-        str[0] = '#';
-        fscanf(f_ini, "%s", str);
-        if (str[0] == '#')
-            fgets(str, 1000, f_ini);
-        else {
-            // LINK: Open VME master
-            if (strstr(str, "LINK")!=NULL) {
-			    CVBoardTypes BType;
-				int link=0, bdnum=0;
+    str[0] = '#';
+    fscanf(f_ini, "%s", str);
+    if (str[0] == '#') fgets(str, 1000, f_ini);
+    else 
+    {
+      // LINK: Open VME master
+      if (strstr(str, "LINK")!=NULL) 
+      {
+        CVBoardTypes BType;
+        int link=0, bdnum=0;
 				
-                fscanf(f_ini, "%s", tmp);
-                if (strstr(tmp, "V1718")!=NULL)
-                    BType = cvV1718;
-                else if (strstr(tmp, "V2718")!=NULL)
-                    BType = cvV2718;
-                else {
-                    printf("Invalid VME Bridge Type\n");
-                    goto exit_prog;
-                }
-                fscanf(f_ini, "%d", &link);
-                if (BType == cvV2718)
-                    fscanf(f_ini, "%d", &bdnum);
-                if (CAENVME_Init(BType, link, bdnum, &handle) != cvSuccess) {
-                    printf("VME Bridge init failure\n");
-                    goto exit_prog;
-                }
-            }
-
-            // Base Address
-            if (strstr(str, "BASE_ADDRESS")!=NULL)
-                fscanf(f_ini, "%x", (int *)&BaseAddress);
-
-            // Raw Data
-            if (strstr(str, "RAW_DATA")!=NULL)
-                fscanf(f_ini, "%d", (int *)&RawData);
-				
-            // ChannelMask
-            if (strstr(str, "CHANNEL_MASK")!=NULL)
-                fscanf(f_ini, "%x", (int *)&ChMask);
-
-            // Time Reference
-            if (strstr(str, "TIME_REF")!=NULL)
-                fscanf(f_ini, "%d", &ChTref);
-
-            // Trigger Matching Window
-            if (strstr(str, "TRIGGER_WINDOW")!=NULL) {
-                fscanf(f_ini, "%d", &val);
-                TMWwidth = (unsigned short)val;
-                fscanf(f_ini, "%d", &val);
-                TMWoffs = (unsigned short)val;
-            }
-
-            // Histo Num Bit
-            if (strstr(str, "HISTO_CHANNELS")!=NULL) {
-                fscanf(f_ini, "%d", &HistoNbin);
-                fscanf(f_ini, "%d", &HistoBinSize);
-            }
-                
-            // Write File
-            if (strstr(str, "WRITE_EVENT_FILE")!=NULL)
-                fscanf(f_ini, "%d", &Write2File);
-
-            // Generic VME Write
-            if (strstr(str, "WRITE_REGISTER")!=NULL) {
-                fscanf(f_ini, "%x", &addr);
-                fscanf(f_ini, "%x", &data);
-				V1190WriteRegister((unsigned short)addr, (unsigned short)data);
-                if (VMEerror) {
-                    printf("VME Write failure at address %08X\n", BaseAddress + addr);
-                    goto exit_prog;
-                }
-            }
-
-            // Write Opcode
-            if (strstr(str, "WRITE_OPCODE")!=NULL) {
-                fscanf(f_ini, "%d", &nwopc);
-                for(i=0; i<nwopc; i++) {
-                    //fscanf(f_ini, "%x", (int *)&opcd[i]);
-					fscanf(f_ini, "%x", &app);
-					opcd[i] = (unsigned short) app;
-                }
-                if(V1190WriteOpcode(nwopc, opcd)) {
-                    printf("Opcode Write failure (nwopc=%d, opcd=%x)\n", nwopc, opcd[0]);
-                    goto exit_prog;
-                }
-                    
-            }
-            
-            // Trigger subtraction
-            if (strstr(str, "EN_SUB_TRG")!=NULL)
-                fscanf(f_ini, "%d", &EnSubTrg);
-                
-            // Resolution setting
-            if (strstr(str, "SET_RES")!=NULL)
-                fscanf(f_ini, "%d", &SetRes);                
-             
-            // Save directory base
-            if (strstr(str, "DATA_SAVE_BASE")!=NULL)
-                fscanf(f_ini, "%s", tSaveDirBase);                               
+        fscanf(f_ini, "%s", tmp);
+        if      (strstr(tmp, "V1718")!=NULL) BType = cvV1718;
+        else if (strstr(tmp, "V2718")!=NULL) BType = cvV2718;
+        else 
+        {
+          printf("Invalid VME Bridge Type\n");
+          goto exit_prog;
         }
+        fscanf(f_ini, "%d", &link);
+        if (BType == cvV2718) fscanf(f_ini, "%d", &bdnum);
+        if (CAENVME_Init(BType, link, bdnum, &handle) != cvSuccess) 
+        {
+          printf("VME Bridge init failure\n");
+          goto exit_prog;
+        }
+      }
+
+      // Base Address
+      if (strstr(str, "BASE_ADDRESS")!=NULL) fscanf(f_ini, "%x", (int *)&BaseAddress);
+
+      // Raw Data
+      if (strstr(str, "RAW_DATA_TXT")!=NULL) fscanf(f_ini, "%d", (int *)&RawDataTxt);
+				
+      // ChannelMask
+      if (strstr(str, "CHANNEL_MASK")!=NULL) fscanf(f_ini, "%x", (int *)&ChMask);
+
+      // Time Reference
+      if (strstr(str, "TIME_REF")!=NULL) fscanf(f_ini, "%d", &ChTref);
+
+      // Trigger Matching Window
+      if (strstr(str, "TRIGGER_WINDOW")!=NULL) 
+      {
+        fscanf(f_ini, "%d", &val);
+        TMWwidth = (unsigned short)val;
+        fscanf(f_ini, "%d", &val);
+        TMWoffs = (unsigned short)val;
+      }
+                
+      // Write File
+      if (strstr(str, "WRITE_EVENT_FILE")!=NULL) fscanf(f_ini, "%d", &Write2File);
+
+      // Generic VME Write
+      if (strstr(str, "WRITE_REGISTER")!=NULL) 
+      {
+        fscanf(f_ini, "%x", &addr);
+        fscanf(f_ini, "%x", &data);
+				V1190WriteRegister((unsigned short)addr, (unsigned short)data);
+        if (VMEerror) 
+        {
+          printf("VME Write failure at address %08X\n", BaseAddress + addr);
+          goto exit_prog;
+        }
+      }
+
+      // Write Opcode
+      if (strstr(str, "WRITE_OPCODE")!=NULL) 
+      {
+        fscanf(f_ini, "%d", &nwopc);
+        for(i=0; i<nwopc; i++) 
+        {
+          //fscanf(f_ini, "%x", (int *)&opcd[i]);
+				  fscanf(f_ini, "%x", &app);
+				  opcd[i] = (unsigned short) app;
+        }
+        if(V1190WriteOpcode(nwopc, opcd)) 
+        {
+          printf("Opcode Write failure (nwopc=%d, opcd=%x)\n", nwopc, opcd[0]);
+          goto exit_prog;
+        }              
+      }
+            
+      // Trigger subtraction
+      if (strstr(str, "EN_SUB_TRG")!=NULL) fscanf(f_ini, "%d", &EnSubTrg);
+                
+      // Resolution setting
+      if (strstr(str, "SET_RES")!=NULL) fscanf(f_ini, "%d", &SetRes);                
+             
+      // Save directory base
+      if (strstr(str, "DATA_SAVE_BASE")!=NULL) fscanf(f_ini, "%s", tSaveDirBase);    
+                
+      // Real time monitoring
+      if (strstr(str, "REAL_TIME_MONITOR")!=NULL) fscanf(f_ini, "%d", &EnRTMonitor);                
+                                           
     }
-    fclose (f_ini);
+  }
+  fclose (f_ini);
 
 
-	if (RawData == 1){
-		fr = fopen("Raw_Data.txt", "w");
+	if (RawDataTxt == 1) fr = fopen(TString::Format("%sRaw_Data%s.txt", tSaveDirBase, tTimeTagString.Data()).Data(), "w");
 		
-		TString tTreeFileName = TString::Format("%sRun%s.root", tSaveDirBase, tTimeTagString.Data());
-		tTreeFile = new TFile(tTreeFileName, "RECREATE");	
-
-	  tTTE = new TimeTaggerEvent();
-
-	  tTTETree = new TTree("tTTETree", "tTTETree");
-	  tTTETree->Branch("TimeBranch", &tTTE);
-		
-		
-	}
+  tTreeFileName = TString::Format("%sRun%s.root", tSaveDirBase, tTimeTagString.Data());
+  tTreeFile = new TFile(tTreeFileName, "RECREATE");	
+  tTTE = new TimeTaggerEvent();
+  tTTETree = new TTree("tTTETree", "tTTETree");
+  tTTETree->Branch("TimeBranch", &tTTE);
 
 
-    // ************************************************************************
-    // Initialize the board and the variables for the acquisition
-    // ************************************************************************
-    // Read Board Type, Firmware Revisions and Serial Number
-	fwrev = V1190ReadRegister(FW_REVISION);
-	sn = (int)V1190ReadRegister(CR_SERNUM0);
-	sn |= (int)V1190ReadRegister(CR_SERNUM1) << 8;
+  // ************************************************************************
+  // Initialize the board and the variables for the acquisition
+  // ************************************************************************
+  // Read Board Type, Firmware Revisions and Serial Number
+  fwrev = V1190ReadRegister(FW_REVISION);
+  sn = (int)V1190ReadRegister(CR_SERNUM0);
+  sn |= (int)V1190ReadRegister(CR_SERNUM1) << 8;
     BoardType = (int)V1190ReadRegister(CR_BOARDID0);
     BoardType |= (int)V1190ReadRegister(CR_BOARDID1) << 8;
     BoardType |= (int)V1190ReadRegister(CR_BOARDID2) << 16;
-	if (VMEerror) {
-		printf("Can't read the configuration ROM\n");
-		goto exit_prog;
-	}
-	printf("Board Type: V%d: SerNum = %d, Fw Revision = %d.%d\n", BoardType, sn, (fwrev >> 8) & 0xFF, fwrev & 0xFF);
+  if (VMEerror) 
+  {
+    printf("Can't read the configuration ROM\n");
+    goto exit_prog;
+  }
+  printf("Board Type: V%d: SerNum = %d, Fw Revision = %d.%d\n", BoardType, sn, (fwrev >> 8) & 0xFF, fwrev & 0xFF);
     
-    // Write Control Register1 (enable BERR and Align64)
-    ctrl = V1190ReadRegister(CONTROL);
-    V1190WriteRegister(CONTROL, ctrl | 0x11);
+  // Write Control Register1 (enable BERR and Align64)
+  ctrl = V1190ReadRegister(CONTROL);
+  V1190WriteRegister(CONTROL, ctrl | 0x11);
 
-    V1190WriteRegister(BLT_EVNUM, 0xFF);
+  V1190WriteRegister(BLT_EVNUM, 0xFF);
     
 
-    opcd[0]=0x0000; 
-    V1190WriteOpcode(1, opcd);  // Enable Trigger Matching
+  opcd[0]=0x0000; 
+  V1190WriteOpcode(1, opcd);  // Enable Trigger Matching
 
-//   opcd[0]=0x3100; 
-//    V1190WriteOpcode(1, opcd);  // Disable TDC Header/Trailer
+//  opcd[0]=0x3100; 
+//  V1190WriteOpcode(1, opcd);  // Disable TDC Header/Trailer
     
-    opcd[0]=0x1000; opcd[1]=TMWwidth; 
-    V1190WriteOpcode(2, opcd);  // Set Trigger Matching Window Width
+  opcd[0]=0x1000; opcd[1]=TMWwidth; 
+  V1190WriteOpcode(2, opcd);  // Set Trigger Matching Window Width
 
-    opcd[0]=0x1100; opcd[1]=TMWoffs; 
-    V1190WriteOpcode(2, opcd);  // Set Trigger Matching Window Offset
+  opcd[0]=0x1100; opcd[1]=TMWoffs; 
+  V1190WriteOpcode(2, opcd);  // Set Trigger Matching Window Offset
     
-    opcd[0]=0x4400; 
-	opcd[1]=(unsigned short)(ChMask & 0xFFFF); 
-	opcd[2]=(unsigned short)((ChMask>>16) & 0xFFFF); 
-    opcd[3]=0x0000;
-	opcd[4]=0x0000;
-	opcd[5]=0x0000;
-	opcd[6]=0x0000;
-	opcd[7]=0x0000;
-	opcd[8]=0x0000;
+  opcd[0]=0x4400; 
+  opcd[1]=(unsigned short)(ChMask & 0xFFFF); 
+  opcd[2]=(unsigned short)((ChMask>>16) & 0xFFFF); 
+  opcd[3]=0x0000;
+  opcd[4]=0x0000;
+  opcd[5]=0x0000;
+  opcd[6]=0x0000;
+  opcd[7]=0x0000;
+  opcd[8]=0x0000;
 
-    if (BoardType == 1190)
-		V1190WriteOpcode(9, opcd);  // Enable Channels
-	else
-		V1190WriteOpcode(3, opcd);  // Enable Channels
+  if (BoardType == 1190) V1190WriteOpcode(9, opcd);  // Enable Channels
+	else                   V1190WriteOpcode(3, opcd);  // Enable Channels
 
 
   //--------Set resolution
@@ -752,328 +709,323 @@ int main(int argc, char *argv[])
   }
   
   //----- make tInfoTree -------------------------------------------------
-  if(1)  //Dumb workaround for issued caused by goto exit_prog throughout code
-  {
   tInfoTree = new TTree("tInfoTree", "tInfoTree");  
   
-  Float_t tTMWwidthInSec = TMWwidth*25e-9;  //widht given in number of clock cycles
-  Float_t tPrecision = tRes;
-  
-  //-----
-  
+  tTMWwidthInSec = TMWwidth*25e-9;  //widht given in number of clock cycles
+  tPrecision = tRes;  
+  //-----  
   tInfoTree->Branch("Comment", &tCommentString);
   tInfoTree->Branch("TimeWindowSize", &tTMWwidthInSec, "TimeWindowSize/F");
   tInfoTree->Branch("Precision", &tPrecision, "Precision/F");
   tInfoTree->Branch("ChannelMask", &ChMask, "ChannelMask/i");
-  tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");
-  
+  tInfoTree->Branch("TimeStamp", &tTimeTagInt, "TimeStamp/i");  
   tInfoTree->Fill();
-  }
+
   //----------------------------------------------------------------------  
   //-------Initialize histograms for real-time monitoring
   tActiveChannels = GetActiveChannels(ChMask);
-  tNCFsToDraw = GetNumberOfCFsToDraw(tActiveChannels.size());
-  for(unsigned int i=0; i<tActiveChannels.size(); i++)
+  if(EnRTMonitor)
   {
-    for(unsigned int j=i; j<tActiveChannels.size(); j++)
+    tNCFsToDraw = GetNumberOfCFsToDraw(tActiveChannels.size());
+    for(unsigned int i=0; i<tActiveChannels.size(); i++)
     {
-      if(i==j)
+      for(unsigned int j=i; j<tActiveChannels.size(); j++)
       {
-        tRTCFs->Add(new TH1D(TString::Format("tAutoCF_%u", tActiveChannels[i]), 
-                             TString::Format("tAutoCF_%u", tActiveChannels[i]), 
-                             2000, -2500000*tRes, 2500000*tRes));
+        if(i==j)
+        {
+          tRTCFs->Add(new TH1D(TString::Format("tAutoCF_%u", tActiveChannels[i]), 
+                               TString::Format("tAutoCF_%u", tActiveChannels[i]), 
+                               2000, -2500000*tRes, 2500000*tRes));
+        }
+        else
+        {
+          tRTCFs->Add(new TH1D(TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
+                               TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
+                               2000, -2500000*tRes, 2500000*tRes));        
+        }
       }
+    }
+    assert(tNCFsToDraw == (unsigned int)tRTCFs->GetEntries());  //TODO probably don't really need tNCFsToDraw
+    //----------
+    for(unsigned int i=0; i<tActiveChannels.size(); i++)
+    {
+      tRTAbsTimes->Add(new TH1D(TString::Format("tTimes_%u", tActiveChannels[i]), 
+                                TString::Format("tTimes_%u", tActiveChannels[i]), 
+                                2000, 0., 0.000055));
+    }
+    //----------
+    tPhaseSpace = (TH1D*)((TH1D*)tRTCFs->At(0))->Clone("tPhaseSpace");
+    for(int i=1; i<tPhaseSpace->GetNbinsX()+1; i++)
+    {
+      if(fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)) > tRes*pow(2., 21)) tPhaseSpace->SetBinContent(i, 0.);
       else
       {
-        tRTCFs->Add(new TH1D(TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
-                             TString::Format("tCF_%u%u", tActiveChannels[i], tActiveChannels[j]), 
-                             2000, -2500000*tRes, 2500000*tRes));        
+        tPhaseSpace->SetBinContent(i, 1.0-fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)/(tRes*pow(2., 21))));
       }
     }
-  }
-  assert(tNCFsToDraw == (unsigned int)tRTCFs->GetEntries());  //TODO probably don't really need tNCFsToDraw
-  //----------
-  for(unsigned int i=0; i<tActiveChannels.size(); i++)
-  {
-    tRTAbsTimes->Add(new TH1D(TString::Format("tTimes_%u", tActiveChannels[i]), 
-                              TString::Format("tTimes_%u", tActiveChannels[i]), 
-                              2000, 0., 0.000055));
-  }
-  //----------
-  //NOTE: ExtractEventsAndLoadTree and methods within (e.g. DrawAllCFs) expect 
-  //      tRTCanvases->At(0) to contain a TCanvas for CFs (with tActiveChannels.size() x tActiveChannels.size() grid)
-  //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with tActiveChannels.size() x tActiveChannels.size() grid)
-  //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with tActiveChannels.size() x 1 grid)
-  tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs"));
-    ((TCanvas*)tRTCanvases->At(0))->Divide(tActiveChannels.size(), tActiveChannels.size());
-  tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom"));
-    ((TCanvas*)tRTCanvases->At(1))->Divide(tActiveChannels.size(), tActiveChannels.size());
-  tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes"));
-    ((TCanvas*)tRTCanvases->At(2))->Divide(tActiveChannels.size(), 1);   
- /* 
-  for(int i=0; i<tRTCanvases->GetEntries(); i++)
-  {  
-//    ((TCanvas*)tRTCanvases->At(i))->Divide(tActiveChannels.size(), tActiveChannels.size());
-    ((TCanvas*)tRTCanvases->At(i))->Draw();
-  }  
-  */
-  //----------
-  tPhaseSpace = (TH1D*)((TH1D*)tRTCFs->At(0))->Clone("tPhaseSpace");
-  for(int i=1; i<tPhaseSpace->GetNbinsX()+1; i++)
-  {
-    if(fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)) > tRes*pow(2., 21)) tPhaseSpace->SetBinContent(i, 0.);
-    else
-    {
-      tPhaseSpace->SetBinContent(i, 1.0-fabs(tPhaseSpace->GetXaxis()->GetBinCenter(i)/(tRes*pow(2., 21))));
-    }
-  }
   
-
+  }
   //--------------------------------------------------------------------------------
     
-    printf("Board Ready. Press a key to start the acquisition ('q' to quit)\n");
-    if (getch()=='q')
-        goto exit_prog;
+  printf("Board Ready. Press a key to start the acquisition ('q' to quit)\n");
+  if (getch()=='q') goto exit_prog;
+  
+  //Put the creation of TCanvases after "Board Ready..." so user doesn't need to navigate back to terminal
+  if(EnRTMonitor)
+  {
+    //NOTE: ExtractEventsAndLoadTree and methods within (e.g. DrawAllCFs) expect 
+    //      tRTCanvases->At(0) to contain a TCanvas for CFs (with tActiveChannels.size() x tActiveChannels.size() grid)
+    //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with tActiveChannels.size() x tActiveChannels.size() grid)
+    //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with tActiveChannels.size() x 1 grid)
+    tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs"));
+      ((TCanvas*)tRTCanvases->At(0))->Divide(tActiveChannels.size(), tActiveChannels.size());
+    tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom"));
+      ((TCanvas*)tRTCanvases->At(1))->Divide(tActiveChannels.size(), tActiveChannels.size());
+    tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes"));
+      ((TCanvas*)tRTCanvases->At(2))->Divide(tActiveChannels.size(), 1);     
+  }
         
-    V1190WriteRegister(SW_CLEAR, 0);        
+  V1190WriteRegister(SW_CLEAR, 0);        
 
-    // Set maximum buffer size for event readout
-    BufferSize =  1024 * 1024;
-    if ( (buff = (unsigned int *)malloc(BufferSize)) == NULL) {
-        printf("Can't allocate memory buffer of %d KB\n", BufferSize/1024);
-        goto exit_prog;
+  // Set maximum buffer size for event readout
+  BufferSize =  1024 * 1024;
+  if ( (buff = (unsigned int *)malloc(BufferSize)) == NULL) 
+  {
+    printf("Can't allocate memory buffer of %d KB\n", BufferSize/1024);
+    goto exit_prog;
+  }
+  for(i=0; i<NUM_CHANNELS; i++) 
+  {
+    DiscardCnt[i] = 0;
+    HitCnt[i] = 0;
+    NegCnt[i] = 0;
+    mean[i]=0;
+    stddev[i]=0;
+    nstat[i]=0;
+  }
+  TrgCnt = 0;
+
+  if (Write2File) fout = fopen(TString::Format("%s%s", tSaveDirBase, OUTFILE_NAME).Data(), "w");
+  // ************************************************************************
+  // Readout
+  // ************************************************************************
+  printf("\nReadout started.\n");
+  PreviousTime = get_time();
+  // Readout Loop
+  while(!Quit) 
+  {
+    if (kbhit()) 
+    {
+      char c;
+      c = getch();
+      if (c == 'q') Quit = 1;
+      if (c == 'r') 
+      {
+        printf("Statistics have been cleared\n");
+        TrgCnt=0; PrevTrgCnt=0;
+        for(i=0; i<NUM_CHANNELS; i++) 
+        {
+          DiscardCnt[i] = 0;
+          HitCnt[i] = 0;
+          NegCnt[i] = 0;
+        }
+      }
+      if (c == ' ') 
+      {
+        printf("\n\n[q] Quit\n");
+        printf("[r] Reset Statistics\n");
+      }
     }
-    for(i=0; i<NUM_CHANNELS; i++) {
-        Histo[i] = (unsigned int *)malloc(4*HistoNbin);
-		memset(Histo[i], 0, 4*HistoNbin);
-        DiscardCnt[i] = 0;
-        HitCnt[i] = 0;
-        NegCnt[i] = 0;
-		mean[i]=0;
-		stddev[i]=0;
-		nstat[i]=0;
+
+    //THE FOLLOWING LINE IS THE ACTUAL DATA GRAB FROM THE VME/TIME TAGGER
+    ret = CAENVME_FIFOBLTReadCycle(handle, BaseAddress, (unsigned char *)buff, BufferSize, cvA32_U_MBLT, cvD64, &nb);
+    if ((ret != cvSuccess) && (ret != cvBusError)) 
+    {
+      printf("Readout Error\n");
+      goto exit_prog;
     }
-    TrgCnt = 0;
-
-    if (Write2File)
-        fout = fopen(OUTFILE_NAME, "w");
-    // ************************************************************************
-    // Readout
-    // ************************************************************************
-    printf("\nReadout started.\n");
-    PreviousTime = get_time();
-    // Readout Loop
-    while(!Quit) {
-	
-		if (kbhit()) {
-			char c;
-			c = getch();
-			if (c == 'q')
-				Quit = 1;
-			if (c == 'r') {
-				printf("Statistics and Histograms have been cleared\n");
-				TrgCnt=0; PrevTrgCnt=0;
-                for(i=0; i<NUM_CHANNELS; i++) {
-                    memset(Histo[i], 0, 4*HistoNbin);
-                    DiscardCnt[i] = 0;
-                    HitCnt[i] = 0;
-                    NegCnt[i] = 0;
-                }
-            }
-            if (c == 'h')
-                SaveHistograms(Histo, HistoNbin, ChMask);
-            if (c == 'p') 
-				if ((ChMask >> ChToPlot) & 0x1)
-					PlotHistograms(Histo, HistoNbin, ChToPlot);
-            if (c == 'c') {
-				printf("Enter Channel to Plot: ");
-				scanf("%d", &ChToPlot);
-			}
-            if (c == ' ') {
-                printf("\n\n[q] Quit\n");
-                printf("[r] Reset Statistics\n");
-                printf("[h] Save Histograms\n");
-                printf("[p] Plot Histogram\n\n");
-            }
-
-		}
-
-		ret = CAENVME_FIFOBLTReadCycle(handle, BaseAddress, (unsigned char *)buff, BufferSize, cvA32_U_MBLT, cvD64, &nb);
-		if ((ret != cvSuccess) && (ret != cvBusError)) {
-			printf("Readout Error\n");
-			goto exit_prog;
-		}
 		
-		// ---------------------------------------------------------------------------
-		// Save raw data to output files
-		// ---------------------------------------------------------------------------
-//		int r;
-                tNGulps++;
-		if (RawData == 1){
-                        ExtractEventsAndLoadTree(tActiveChannels, tRes, tNGulps, nb, buff, tTTE, tTTETree, tRTCFs, tRTAbsTimes, tRTCanvases, tPhaseSpace, 1, 8);
-			for(r=0; r<nb/4; r++)
-			{
-//				fprintf(fr, "%8x\n", buff[r]);  //For now, just turn off .txt output
-
-				if(IS_TDC_ERROR(buff[r])) tNErrs++;
-				if(IS_GLOBAL_TRAILER(buff[r]) && ((buff[r]>>24) & 0x7) != 0) tNErrs++;
-		  }
-		}
+    // ---------------------------------------------------------------------------
+    // Save raw data to output files
+    // ---------------------------------------------------------------------------
+    tNGulps++;
+    tNErrs += ExtractEventsAndLoadTree(tActiveChannels, tRes, tNGulps, nb, buff, tTTE, tTTETree, tRTCFs, tRTAbsTimes, tRTCanvases, tPhaseSpace, EnRTMonitor);            
+    if (RawDataTxt == 1)
+    {
+      for(r=0; r<nb/4; r++)
+      {
+        fprintf(fr, "%8x\n", buff[r]);
+      }
+    }
 		
-        // --------------------------------------------------------------------
-        // Calculate throughput rate (every second)
-        // --------------------------------------------------------------------
-		CurrentTime = get_time(); // Time in milliseconds
-		ElapsedTime = CurrentTime - PreviousTime;
-		if (ElapsedTime > 1000) {
-			TPrate = ((float)(totnb) / ElapsedTime)*1000.0;     // Bytes/second
-			TRGrate = ((float)(TrgCnt - PrevTrgCnt) / ElapsedTime)*1000.0;  // Triggers/second
-			if (totnb==0)   printf("No data\n");
-			else			printf("Readout Rate=%.2fMB/s. TrgRate=%.4f Hz\n", TPrate/1048576, TRGrate);
-            printf("TDC_ErrorFlags = %04x; Ovf=%d; TrgLost=%d\n", TDCerrors, Ovf, TrgLost);
-			if (TrgCnt==0) {
-				printf("No Trigger\n");
-			} else {
-				printf("%lld triggers processed\n", TrgCnt);
-				printf("CH\tFound\tDiscarded\tNegative\n");
-				
-				for(i=0; i<(NUM_CHANNELS); i++) {
-//					printf("%d\t%6.2f%%\t%6.2f%%\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt);
-					if (nstat[i] > 0) {
-						mean[i] = mean[i] / nstat[i];
-						stddev[i] = sqrt(stddev[i]/nstat[i] - mean[i]*mean[i]);
-						if (BoardType == 1190) 
-						  printf("%d\t%6.2f%%\t%6.2f%%\t\t%6.2f%%\t  nstat=%d m=%.3f (ps)  s=%.3f (ps)\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt,(float)NegCnt[i]*100.0/TrgCnt, nstat[i], 100*mean[i], 100*stddev[i]);
+    // --------------------------------------------------------------------
+    // Calculate throughput rate (every second)
+    // --------------------------------------------------------------------
+    CurrentTime = get_time(); // Time in milliseconds
+    ElapsedTime = CurrentTime - PreviousTime;
+    if (ElapsedTime > 1000) 
+    {
+      TPrate = ((float)(totnb) / ElapsedTime)*1000.0;     // Bytes/second
+      TRGrate = ((float)(TrgCnt - PrevTrgCnt) / ElapsedTime)*1000.0;  // Triggers/second
+      if (totnb==0) printf("No data\n");
+      else			
+      {
+        printf("Readout Rate=%.2fMB/s. TrgRate=%.4f Hz\n", TPrate/1048576, TRGrate);
+        printf("TDC_ErrorFlags = %04x; Ovf=%d; TrgLost=%d\n", TDCerrors, Ovf, TrgLost);
+      }      
+      if (TrgCnt==0) printf("No Trigger\n");
+      else 
+      {
+        printf("%lld triggers processed\n", TrgCnt);
+        printf("CH\tFound\tDiscarded\tNegative\n");				
+        for(i=0; i<(NUM_CHANNELS); i++) 
+        {
+          if (nstat[i] > 0) 
+          {
+            mean[i] = mean[i] / nstat[i];
+            stddev[i] = sqrt(stddev[i]/nstat[i] - mean[i]*mean[i]);
+            if (BoardType == 1190)
+            {
+              printf("%d\t%6.2f%%\t%6.2f%%\t\t%6.2f%%\t  nstat=%d m=%.3f (ps)  s=%.3f (ps)\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt,(float)NegCnt[i]*100.0/TrgCnt, nstat[i], 100*mean[i], 100*stddev[i]);
+            }
 						else
-						  printf("%d\t%6.2f%%\t%6.2f%%\t\t%6.2f%%\t  nstat=%d m=%.3f (ps)  s=%.3f (ps)\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt,(float)NegCnt[i]*100.0/TrgCnt, nstat[i], 25*mean[i], 25*stddev[i]);
-					} else {
+						{
+              printf("%d\t%6.2f%%\t%6.2f%%\t\t%6.2f%%\t  nstat=%d m=%.3f (ps)  s=%.3f (ps)\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt,(float)NegCnt[i]*100.0/TrgCnt, nstat[i], 25*mean[i], 25*stddev[i]);
+            }
+          } 
+          else 
+          {
 						printf("%d\t%6.2f%%\t%6.2f%%\t\t%6.2f%%\t   ---\n", i, (float)HitCnt[i]*100.0/TrgCnt, (float)DiscardCnt[i]*100.0/TrgCnt,(float)NegCnt[i]*100.0/TrgCnt);
-					
-					}
+          }
 
-					mean[i]=0;
-					stddev[i]=0;
-					nstat[i]=0;
-                }
-			}
-			printf("\n\n");
-			totnb=0; TDCerrors=0; Ovf=0; TrgLost=0;
-			PrevTrgCnt = TrgCnt;
-			PreviousTime = CurrentTime;
-		}
+          mean[i]=0;
+          stddev[i]=0;
+          nstat[i]=0;
+        }
+      }
+      printf("\n\n");
+      totnb=0; TDCerrors=0; Ovf=0; TrgLost=0;
+      PrevTrgCnt = TrgCnt;
+      PreviousTime = CurrentTime;
+    }
 		
-		if (nb == 0)
-			continue;
-        totnb += nb;
+    if (nb == 0) continue;
+    totnb += nb;
 		
 
-        // --------------------------------------------------------------------
-        // Data Analysis
-        // --------------------------------------------------------------------
-		Rpnt = 0;
-		while (Rpnt < (nb/4)) {
-			if(IS_GLOBAL_HEADER(buff[Rpnt])) {
-                if (!Header)
-                    printf("Unexpected Header (word n. %d)\n", Rpnt);
-                if (Write2File)
-                    fprintf(fout, "Event Counter = %d (Ev.n.%lld)\n", DATA_EVENT_COUNTER(buff[Rpnt]), TrgCnt);
-                Header=0;
-                WordPnt = 1;
-                TrgCnt++;
-                ErrorFlags=0;
-                memset(ChFound, 0, NUM_CHANNELS*sizeof(ChFound[0]));
-            } else if (IS_GLOBAL_TRAILER(buff[Rpnt])) {
-                //nw = DATA_TDC_WORD_CNT(buff[Rpnt]);
-                Ovf = buff[Rpnt]>>25&1;
-                TrgLost = buff[Rpnt]>>26&1;
-                /*if (nw != (WordPnt+1)) {
-                    printf("Wrong Event size: Word counter in trailer is %d, while actual is %d\n", nw, WordPnt);
-                }*/                
-                if (Write2File) {
-                    fprintf(fout, "Status: ErrorFlags = %04x; Ovf=%d; TrgLost=%d\n\n", ErrorFlags, buff[Rpnt]>>25&1, buff[Rpnt]>>26&1);
+    // --------------------------------------------------------------------
+    // Data Analysis
+    // --------------------------------------------------------------------
+    Rpnt = 0;
+    while (Rpnt < (nb/4)) 
+    {
+      if(IS_GLOBAL_HEADER(buff[Rpnt])) 
+      {
+        if (!Header)     printf("Unexpected Header (word n. %d)\n", Rpnt);
+        if (Write2File) fprintf(fout, "Event Counter = %d (Ev.n.%lld)\n", DATA_EVENT_COUNTER(buff[Rpnt]), TrgCnt);
+        Header=0;
+        WordPnt = 1;
+        TrgCnt++;
+        ErrorFlags=0;
+        memset(ChFound, 0, NUM_CHANNELS*sizeof(ChFound[0]));
+      } 
+      else if (IS_GLOBAL_TRAILER(buff[Rpnt])) 
+      {
+        //nw = DATA_TDC_WORD_CNT(buff[Rpnt]);
+        Ovf = buff[Rpnt]>>25&1;
+        TrgLost = buff[Rpnt]>>26&1;
+        /*if (nw != (WordPnt+1)) 
+        {
+          printf("Wrong Event size: Word counter in trailer is %d, while actual is %d\n", nw, WordPnt);
+        }*/                
+        if (Write2File) 
+        {
+          fprintf(fout, "Status: ErrorFlags = %04x; Ovf=%d; TrgLost=%d\n\n", ErrorFlags, buff[Rpnt]>>25&1, buff[Rpnt]>>26&1);
 				}
-				if (ChFound[ChTref]) {
-					fprintf(fout, "Tref(Ch %d) = %d\n", ChTref, TimeAbs[ChTref]);
-					for (i=0; i<NUM_CHANNELS; i++) {
-						if ((ChFound[i]) && (i != ChTref)) {
-  						    timerel = TimeAbs[i] - TimeAbs[ChTref]; 
-							if (timerel > 0) {
-								nstat[i]++;
-								mean[i] += (double)timerel;
-								stddev[i] += (double)(timerel*timerel);
-								if (Write2File)
-									fprintf(fout, "Ch %d = %d\n", i, timerel);
-								if ((timerel > 0) && ((timerel/HistoBinSize) < HistoNbin))
-									Histo[i][(timerel/HistoBinSize)]++;
-							}
-							else
-								NegCnt[i]++;
-						}
-					}
-				}
-                Header=1;    
-            } else if (IS_TDC_ERROR(buff[Rpnt])) {
-                ErrorFlags = buff[Rpnt] & 0x7FFF;
-                TDCerrors |= ErrorFlags;
-            } else if (IS_TDC_DATA(buff[Rpnt])) {                
-                if (Header)
-                    printf("Missing Header (word n. %d)\n", Rpnt);
-                if (BoardType == 1190) {
-                    ch = DATA_CH(buff[Rpnt]);
-                    time = DATA_MEAS(buff[Rpnt]);
-                } else {
-                    ch = DATA_CH_25(buff[Rpnt]);
-                    time = DATA_MEAS_25(buff[Rpnt]);
-                }
+				if (ChFound[ChTref]) 
+        {
+          fprintf(fout, "Tref(Ch %d) = %d\n", ChTref, TimeAbs[ChTref]);
+          for (i=0; i<NUM_CHANNELS; i++) 
+          {
+            if ((ChFound[i]) && (i != ChTref)) 
+            {
+              timerel = TimeAbs[i] - TimeAbs[ChTref]; 
+              if (timerel > 0) 
+              {
+                nstat[i]++;
+                mean[i] += (double)timerel;
+                stddev[i] += (double)(timerel*timerel);
+                if (Write2File) fprintf(fout, "Ch %d = %d\n", i, timerel);
+              }
+							else NegCnt[i]++;
+            }
+          }
+        }
+        Header=1;    
+      } 
+      else if (IS_TDC_ERROR(buff[Rpnt])) 
+      {
+        ErrorFlags = buff[Rpnt] & 0x7FFF;
+        TDCerrors |= ErrorFlags;
+      } 
+      else if (IS_TDC_DATA(buff[Rpnt])) 
+      {                
+        if (Header) printf("Missing Header (word n. %d)\n", Rpnt);
+        if (BoardType == 1190) 
+        {
+          ch = DATA_CH(buff[Rpnt]);
+          time = DATA_MEAS(buff[Rpnt]);
+        } 
+        else 
+        {
+          ch = DATA_CH_25(buff[Rpnt]);
+          time = DATA_MEAS_25(buff[Rpnt]);
+        }
 
-                if (ch < NUM_CHANNELS) {
-					if (!ChFound[ch]) {
+        if (ch < NUM_CHANNELS) 
+        {
+          if (!ChFound[ch]) 
+          {
 						ChFound[ch] = 1;
 						TimeAbs[ch] = time;
-//						if (ch == ChTref) 
-//							Tref = time;
-					} else {
-						DiscardCnt[ch]++;
-					}
-                    HitCnt[ch]++;                    
-                }
-            } else if (IS_FILLER(buff[Rpnt])) {
-                if (Rpnt < ((nb/4)-1))
-                    printf("Unexpected filler (word n. %d)\n", Rpnt);
-            }
-            Rpnt++;
-            WordPnt++;
-		}
-    }
-    
-    SaveHistograms(Histo, HistoNbin, ChMask);        
-    ErrorLevel=0;
+//          if (ch == ChTref) 
+//          Tref = time;
+          }
+          else DiscardCnt[ch]++;
 
-	if (RawData == 1){
-		fclose(fr);
-		printf("Raw Data Files saved\n");		
-	}
+          HitCnt[ch]++;                    
+        }
+      }
+      else if (IS_FILLER(buff[Rpnt])) 
+      {
+        if (Rpnt < ((nb/4)-1)) printf("Unexpected filler (word n. %d)\n", Rpnt);
+      }
+      Rpnt++;
+      WordPnt++;
+    }
+  }
+    
+  ErrorLevel=0;
+
+  if (RawDataTxt == 1)
+  {
+    fclose(fr);
+    printf("Raw Data Files saved\n");		
+  }
 	
 exit_prog:
 
-    if (gnuplot != NULL)  
-		_pclose(gnuplot);
-    if (buff != NULL)  
-		free(buff);
-    for(i=0; i<NUM_CHANNELS; i++) 
-        if (Histo[i] != NULL)  free(Histo[i]);
-    if (handle != -1)  
-		CAENVME_End(handle);
-    if (ErrorLevel<0)
-        getch();
+  if (gnuplot != NULL) _pclose(gnuplot);
+  if (buff != NULL) free(buff);
+  if (handle != -1) CAENVME_End(handle);
+  if (ErrorLevel<0) getch();
         
-    
-    printf("tNErrs = %d\n", tNErrs);
-    printf("tNGulps = %d\n", tNGulps);  
-    tTreeFile->Write(); 
-    tTreeFile->Close();      
+  printf("tNErrs = %d\n", tNErrs);
+  printf("tNGulps = %d\n", tNGulps);  
+  tTreeFile->Write(); 
+  tTreeFile->Close();      
         
-    return 0;
+  return 0;
 }
 
 
