@@ -419,6 +419,51 @@ unsigned int GetNumberOfCFsToDraw(int aNActiveChannels)
   return aNActiveChannels + fact(aNActiveChannels)/(fact(2)*fact(aNActiveChannels-2));
 }
 
+
+
+
+// ---------------------------------------------------------------------------
+void CreateRTCanvases(TObjArray* aRTCanvases, unsigned int aNActiveChannels, 
+                      double aMenuSizeLeft=0.05, double aMenuSizeRight=0.00,
+                      double aMenuSizeTop=0.03, double aMenuSizeBottom=0.00)
+{
+  //NOTE: MenuSizes in terms of % of screen
+  //      Defaults Left=0.05, Right=0.00, Top=0.03, Bottom=0.00 for typical Ubuntu installation
+
+  //NOTE: ExtractEventsAndLoadTree and methods within (e.g. DrawAllCFs) expect 
+  //      tRTCanvases->At(0) to contain a TCanvas for CFs (with aNActiveChannels x aNActiveChannels grid)
+  //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with aNActiveChannels x aNActiveChannels grid)
+  //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with aNActiveChannels x 1 grid)
+    
+  unsigned int tDispWidth  = gClient->GetDisplayWidth();
+  unsigned int tDispHeight = gClient->GetDisplayHeight();
+
+  double tUsableWidth  = (1.0-aMenuSizeLeft-aMenuSizeRight)*tDispWidth;
+  double tUsableHeight = (1.0-aMenuSizeTop-aMenuSizeBottom)*tDispHeight;
+  //----------
+  aRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs", 
+                               aMenuSizeLeft*tDispWidth, 
+                               aMenuSizeTop*tDispHeight, 
+                               0.5*tUsableWidth, 
+                               0.5*tUsableHeight));
+  ((TCanvas*)aRTCanvases->At(0))->Divide(aNActiveChannels, aNActiveChannels);
+  //----------
+  aRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom", 
+                               aMenuSizeLeft*tDispWidth + 0.5*tUsableWidth, 
+                               aMenuSizeTop*tDispHeight, 
+                               0.5*tUsableWidth, 
+                               0.5*tUsableHeight));
+  ((TCanvas*)aRTCanvases->At(1))->Divide(aNActiveChannels, aNActiveChannels);
+  //----------
+  aRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes", 
+                               aMenuSizeLeft*tDispWidth, 
+                               aMenuSizeTop*tDispHeight + 0.5*tUsableHeight, 
+                               0.5*tUsableWidth, 
+                               0.5*tUsableHeight));
+  ((TCanvas*)aRTCanvases->At(2))->Divide(aNActiveChannels, 1);    
+}
+
+
 // ##################################################################################################################
 // ------------------------------------------------------------------------------------------------------------------
 // ##################################################################################################################
@@ -779,16 +824,7 @@ int main(int argc, char *argv[])
     //      tRTCanvases->At(0) to contain a TCanvas for CFs (with tActiveChannels.size() x tActiveChannels.size() grid)
     //      tRTCanvases->At(1) to contain a TCanvas for CFsZoom (with tActiveChannels.size() x tActiveChannels.size() grid)
     //      tRTCanvases->At(2) to contain a TCanvas for AbsTimes (with tActiveChannels.size() x 1 grid)
-    
-    double tDispWidth  = gClient->GetDisplayWidth();
-    double tDispHeight = gClient->GetDisplayHeight();  
-    
-    tRTCanvases->Add(new TCanvas("tRTCanCFs", "tRTCanCFs", 0, 0, tDispWidth/2, tDispHeight/2));
-      ((TCanvas*)tRTCanvases->At(0))->Divide(tActiveChannels.size(), tActiveChannels.size());
-    tRTCanvases->Add(new TCanvas("tRTCanCFsZoom", "tRTCanCFsZoom", tDispWidth/2, 0, tDispWidth/2, tDispHeight/2));
-      ((TCanvas*)tRTCanvases->At(1))->Divide(tActiveChannels.size(), tActiveChannels.size());
-    tRTCanvases->Add(new TCanvas("tRTCanAbsTimes", "tRTCanAbsTimes", tDispWidth/2, tDispHeight/2, tDispWidth/2, tDispHeight/2));
-      ((TCanvas*)tRTCanvases->At(2))->Divide(tActiveChannels.size(), 1);     
+    CreateRTCanvases(tRTCanvases, tActiveChannels.size());
   }
         
   V1190WriteRegister(SW_CLEAR, 0);        
